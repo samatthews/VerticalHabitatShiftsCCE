@@ -1,0 +1,589 @@
+---
+title: "Script0_LoadData"
+output: html_document
+date: "2023-01-16"
+---
+
+This markdown loads all of the 18S and COI data, including taxonomy files. Data are then cleaned and filtered, and replicates merged. 
+
+ 
+## first we do COI
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE)
+knitr::is_latex_output()
+#output: html_document:
+#    keep_md: true
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+theme_update(plot.title = element_text(hjust = 0.5))
+library(dplyr)
+library(tidyr)
+library(clustsig)
+library(ggdendro)
+library(gridExtra)
+library(stringr)
+#library(ggbiplot) #not available for R4.0
+library(dendextend)
+library(Biostrings)
+#library(msa) #not available for R4.0
+library(insect)
+library(ape)
+library(seqinr)
+library(decontam)
+#library(yingtools2) #not available for R4.0
+#(DESeq2)
+#library(metagMisc)
+#library(UpSetR)
+```
+
+```{r import COI data}
+in_biom <- import_biom("~/Documents/Chapter1/qiime2_analyses/COI_v3/exported-feature-table/feature-table_json.biom")
+#sample_names(in_biom)
+
+md <- import_qiime_sample_data("~/Documents/Chapter1/leray_3lib_metadata.txt") #### saved from metadata file for whole project
+in_biom <- merge_phyloseq(in_biom, md)
+
+taxcsv <- read.csv("~/Documents/Chapter1/qiime2_analyses/COI_v3/COI-MZGtrimmed-sklearn-taxonomy.tsv", sep="\t", header = F)
+taxbackup <- taxcsv
+
+taxcsv <- taxcsv[-1,]
+taxcsv <- taxcsv[-1,]
+taxonomy <- str_split_fixed(taxcsv$V2, ";", n=21)
+
+taxbackup <- taxonomy
+taxtest <- taxonomy
+
+## remove leading levels: 
+taxtest <- lapply(taxtest, function(x) gsub(".__", "", x))
+taxtest <- lapply(taxtest, function(x) gsub(".ull_", "", x))
+taxtest <- data.frame(matrix(unlist(taxtest), nrow=nrow(taxonomy), byrow=F),stringsAsFactors=FALSE)
+
+taxtest <- lapply(taxtest, function(x) gsub("_[0-9]+", "", x))
+taxtest <- data.frame(matrix(unlist(taxtest), nrow=nrow(taxonomy), byrow=F),stringsAsFactors=FALSE)
+
+
+taxonomy <- as.matrix(taxtest)
+
+taxonomy <- as.matrix(taxtest[,c(1, 4,5,8,9,11,12,16,18,20)])
+
+colnames(taxonomy) <- c("Kingdom", "Phylum", "Subphylum", "Class", "Subclass", "Superorder", "Order", "Family", "Genus", "Species")
+rownames(taxonomy) <- taxcsv$V1
+
+#convert to phyloseq objects
+in_biom_tax <- tax_table(taxonomy)
+taxa_names(in_biom_tax) <- rownames(taxonomy)
+
+#### combine filtered phyloseq object and taxonomy infor
+in_biom <- merge_phyloseq(in_biom, in_biom_tax)
+
+COI <- in_biom
+save(COI, file = "~/Documents/Chapter1/for_ms/COI_v3biom_MZGtax.Rdat")
+
+rm(list=c("in_biom", "md", "taxonomy", "taxcsv", "mylist", "taxonomy"))
+```
+
+
+
+#filter contamination based on neg. controls
+
+
+```{r identify contaminants library2}
+#load("~/Documents/Chapter1/for_ms/COI_v3biom_ncbitax.Rdat")
+#load("~/Documents/Chapter1/for_ms/COI_v3biom_midoritax.Rdat")
+load("~/Documents/Chapter1/for_ms/COI_v3biom_MZGtax.Rdat")
+
+day <- subset_samples(COI, Sequencing.Run == "2")
+day <- filter_taxa(day, function(x) sum(x > 0) > 1, TRUE)
+day <- subset_samples(day, sample_sums(day) > 0)
+sample_data(day)$num_DNAconc <- as.numeric(sample_data(day)$DNA.Conc...ug.mL.)
+sample_data(day)$num_DNAconc[sample_data(day)$num_DNAconc < 0 ] <- 1
+sample_data(day)$Sample_or_Control <- "True Sample" 
+sample_data(day)$Sample_or_Control[sample_data(day)$Net == "Ext. Control"] <- "Control Sample"
+
+df <- as.data.frame(sample_data(day)) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(day)
+df <- df[order(df$LibrarySize),]
+df$Index <- seq(nrow(df))
+#df$Sample_or_Control <- rep("Sample", n = nrow(df))
+#df$Sample_or_Control[df$net == ""] <- "Control"
+ggplot(data=df, aes(x=Index, y=LibrarySize, color=Sample_or_Control)) + geom_point()
+otutable <- data.frame(otu_table(day))
+
+contamdf.freq <- isContaminant(day, method="frequency", conc="num_DNAconc")
+head(contamdf.freq)
+head(which(contamdf.freq$contaminant))
+table(contamdf.freq$contaminant)
+plot_frequency(day, taxa=taxa_names(day)[which(contamdf.freq$contaminant)], conc="num_DNAconc") + 
+  xlab("DNA Concentration (PicoGreen fluorescent intensity)")
+
+
+sample_data(day)$is.neg <- sample_data(day)$Sample_or_Control == "Control Sample"
+
+contamdf.prev <- isContaminant(day, method="prevalence", neg="is.neg")
+table(contamdf.prev$contaminant)
+
+ps.pa <- transform_sample_counts(day, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "Control Sample", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "True Sample", ps.pa)
+# Make data.frame of prevalence in positive and negative samples
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      contaminant=contamdf.prev$contaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+
+contamdf.both <- isContaminant(day, method="either", neg="is.neg", conc ="num_DNAconc")
+table(contamdf.both$contaminant)
+tax_table(day)[which(contamdf.both$contaminant)]
+
+plot_frequency(day, taxa=taxa_names(day)[which(contamdf.both$contaminant)], conc="num_DNAconc") + 
+  xlab("DNA Concentration (PicoGreen fluorescent intensity)")
+
+
+daycontam <- taxa_names(day)[which(contamdf.both$contaminant)]
+```
+
+```{r identify contaminants library1}
+#########
+
+#there are no sequences for the negative controls for the night samples, so cannot filter for contam based on NC, only on [conc]
+
+night <- subset_samples(COI, Sequencing.Run == "1")
+night <- filter_taxa(night, function(x) sum(x > 0) > 1, TRUE)
+night <- subset_samples(night, sample_sums(night) > 0)
+sample_data(night)$num_DNAconc <- as.numeric(sample_data(night)$DNA.Conc...ug.mL.)
+sample_data(night)$num_DNAconc[sample_data(night)$num_DNAconc < 0 ] <- 1
+sample_data(night)$Sample_or_Control <- "True Sample" 
+sample_data(night)$Sample_or_Control[sample_data(night)$net == "Ext. control"] <- "Control Sample"
+
+df <- as.data.frame(sample_data(night)) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(night)
+df <- df[order(df$LibrarySize),]
+df$Index <- seq(nrow(df))
+#df$Sample_or_Control <- rep("Sample", n = nrow(df))
+#df$Sample_or_Control[df$net == ""] <- "Control"
+ggplot(data=df, aes(x=Index, y=LibrarySize, color=Sample_or_Control)) + geom_point()
+otutable <- data.frame(otu_table(night))
+
+contamdf.freq <- isContaminant(night, method="frequency", conc="num_DNAconc")
+head(contamdf.freq)
+head(which(contamdf.freq$contaminant))
+table(contamdf.freq$contaminant)
+plot_frequency(night, taxa=taxa_names(night)[which(contamdf.freq$contaminant)], conc="num_DNAconc") + 
+  xlab("DNA Concentration (PicoGreen fluorescent intensity)")
+
+
+sample_data(night)$is.neg <- sample_data(night)$Sample_or_Control == "Control Sample"
+
+contamdf.prev <- isContaminant(night, method="prevalence", neg="is.neg")
+table(contamdf.prev$contaminant)
+
+contamdf.both <- isContaminant(night, method="either", neg="is.neg", conc ="num_DNAconc")
+table(contamdf.both$contaminant)
+tax_table(night)[which(contamdf.both$contaminant)]
+
+plot_frequency(night, taxa=taxa_names(night)[which(contamdf.both$contaminant)], conc="num_DNAconc") + 
+  xlab("DNA Concentration (PicoGreen fluorescent intensity)")
+
+nightcontam <- taxa_names(day)[which(contamdf.freq$contaminant)]
+
+
+
+```
+
+
+```{r identify contaminants library3}
+day <- subset_samples(COI, Sequencing.Run == "3")
+day <- filter_taxa(day, function(x) sum(x > 0) > 1, TRUE)
+day <- subset_samples(day, sample_sums(day) > 0)
+sample_data(day)$num_DNAconc <- as.numeric(sample_data(day)$DNA.Conc...ug.mL.)
+sample_data(day)$num_DNAconc[sample_data(day)$num_DNAconc < 0 ] <- 1
+sample_data(day)$Sample_or_Control <- "True Sample" 
+sample_data(day)$Sample_or_Control[sample_data(day)$Net == "nc"] <- "Control Sample"
+
+df <- as.data.frame(sample_data(day)) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(day)
+df <- df[order(df$LibrarySize),]
+df$Index <- seq(nrow(df))
+#df$Sample_or_Control <- rep("Sample", n = nrow(df))
+#df$Sample_or_Control[df$net == ""] <- "Control"
+ggplot(data=df, aes(x=Index, y=LibrarySize, color=Sample_or_Control)) + geom_point()
+otutable <- data.frame(otu_table(day))
+
+contamdf.freq <- isContaminant(day, method="frequency", conc="num_DNAconc")
+head(contamdf.freq)
+head(which(contamdf.freq$contaminant))
+table(contamdf.freq$contaminant)
+#plot_frequency(day, taxa=taxa_names(day)[which(contamdf.freq$contaminant)], conc="num_DNAconc") + 
+  xlab("DNA Concentration (PicoGreen fluorescent intensity)")
+
+
+sample_data(day)$is.neg <- sample_data(day)$Sample_or_Control == "Control Sample"
+
+contamdf.prev <- isContaminant(day, method="prevalence", neg="is.neg")
+table(contamdf.prev$contaminant)
+
+ps.pa <- transform_sample_counts(day, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "Control Sample", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "True Sample", ps.pa)
+# Make data.frame of prevalence in positive and negative samples
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      contaminant=contamdf.prev$contaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+
+contamdf.both <- isContaminant(day, method="either", neg="is.neg", conc ="num_DNAconc")
+table(contamdf.both$contaminant)
+tax_table(day)[which(contamdf.both$contaminant)]
+
+plot_frequency(day, taxa=taxa_names(day)[which(contamdf.both$contaminant)], conc="num_DNAconc") + 
+  xlab("DNA Concentration (PicoGreen fluorescent intensity)")
+
+lib3 <- taxa_names(day)[which(contamdf.both$contaminant)]
+```
+
+```{r filter}
+
+
+contam <- c(daycontam, nightcontam, lib3)
+
+##filter out contaminants
+contams <- contam
+allTaxa <- taxa_names(COI)
+goodTaxa <- allTaxa[!(allTaxa %in% contams)]
+COI_contam <- prune_taxa(contams, COI)
+COI_nocontam <- prune_taxa(goodTaxa, COI)
+ntaxa(COI)
+ntaxa(COI_nocontam)
+
+
+contamtax <- data.frame(tax_table(COI_contam))
+write.csv(contamtax, file = "COIcontam_tax.csv")
+contamab <- data.frame(otu_table(COI_contam))
+write.csv(contamab, file = "COIcontam_ab.csv")
+contam_samdat <- data.frame(sample_data(COI_contam))
+write.csv(contam_samdat, file = "COIcontam_sampdat.csv")
+
+##remove Neg controls
+COIclean_MZG <- subset_samples(COI_nocontam, sample_data(COI_nocontam)$Net != "Ext. control")
+COIclean_MZG <- subset_samples(COIclean_MZG, sample_data(COIclean_MZG)$Cycle != "Extraction control")
+COIclean_MZG <- subset_samples(COIclean_MZG, sample_data(COIclean_MZG)$Net != "")
+COIclean_MZG <- subset_samples(COIclean_MZG, sample_data(COIclean_MZG)$Net != "nc")
+COIclean_MZG <- prune_taxa(goodTaxa, COIclean_MZG)
+
+
+
+
+save(COIclean_MZG, file = "~/Documents/Chapter1/for_ms/COI_v3biom_MZG.Rdat")
+#load("~/Documents/Chapter4/Oct2020_ICES/COI_v1biom_ncbitax.Rdat")
+
+
+```
+
+
+## now load and clean 18s
+```{r import data}
+in_biom <- import_biom("~/Documents/Chapter1/qiime2_analyses/18s_v3/exported-feature-table/feature-table_json.biom")
+
+md <- import_qiime_sample_data("~/Documents/Chapter1/zhan_3lib_metadata.txt") #### saved from metadata file for whole project
+in_biom <- merge_phyloseq(in_biom, md)
+z18S_SILVA <- in_biom
+
+#assigned with sklearn classifier trained on metazoogene data
+#with RDP classifier, COI, unique, confidence cutoff 0.8
+taxcsv <- read.csv("~/Documents/Chapter1/qiime2_analyses/18s_v3/18S-MZGtrimmed-sklearn-taxonomy.tsv", sep="\t", header = F)
+taxbackup <- taxcsv
+
+taxcsv <- taxcsv[-1,]
+taxcsv <- taxcsv[-1,]
+taxonomy <- str_split_fixed(taxcsv$V2, ";", n=21)
+
+taxbackup <- taxonomy
+taxtest <- taxonomy
+
+## remove leading levels: 
+taxtest <- lapply(taxtest, function(x) gsub(".ull_", "", x))
+taxtest <- lapply(taxtest, function(x) gsub("_", " ", x))
+taxtest <- data.frame(matrix(unlist(taxtest), nrow=nrow(taxonomy), byrow=F),stringsAsFactors=FALSE)
+
+#taxtest <- lapply(taxtest, function(x) gsub("_[0-9]+", "", x))
+#taxtest <- data.frame(matrix(unlist(taxtest), nrow=nrow(taxonomy), byrow=F),stringsAsFactors=FALSE)
+
+
+taxonomy <- as.matrix(taxtest[,c(1, 4,5,8,9,11,12,16,18,20)])
+
+colnames(taxonomy) <- c("Kingdom", "Phylum", "Subphylum", "Class", "Subclass", "Superorder", "Order", "Family", "Genus", "Species")
+rownames(taxonomy) <- taxcsv$V1
+
+#convert to phyloseq objects
+in_biom_tax <- tax_table(taxonomy)
+taxa_names(in_biom_tax) <- rownames(taxonomy)
+
+#### combine filtered phyloseq object and taxonomy infor
+in_biom <- merge_phyloseq(in_biom, in_biom_tax)
+
+ZHANmzg <- in_biom
+
+save(ZHANmzg, file = "~/Documents/Chapter1/for_ms/18S_v3biom.Rdat")
+
+rm(list=c("in_biom", "md", "taxonomy", "taxcsv", "in_biom_tax"))
+```
+
+
+
+```{r load imported data}
+load("~/Documents/Chapter1/for_ms/18S_v3biom.Rdat")
+
+```
+
+
+
+```{r identify contaminants library2}
+#load("~/Documents/Chapter1/for_ms/18S_v3biom_ncbitax.Rdat")
+load("~/Documents/Chapter1/for_ms/18S_v3biom.Rdat")
+
+day <- subset_samples(ZHANmzg, Sequencing.Run == "2")
+day <- filter_taxa(day, function(x) sum(x > 0) > 1, TRUE)
+day <- subset_samples(day, sample_sums(day) > 0)
+sample_data(day)$num_DNAconc <- as.numeric(sample_data(day)$DNA.Conc...ug.mL.)
+sample_data(day)$num_DNAconc[sample_data(day)$num_DNAconc < 0 ] <- 1
+sample_data(day)$Sample_or_Control <- "True Sample" 
+sample_data(day)$Sample_or_Control[sample_data(day)$Net == "Ext. Control"] <- "Control Sample"
+
+df <- as.data.frame(sample_data(day)) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(day)
+df <- df[order(df$LibrarySize),]
+df$Index <- seq(nrow(df))
+#df$Sample_or_Control <- rep("Sample", n = nrow(df))
+#df$Sample_or_Control[df$net == ""] <- "Control"
+ggplot(data=df, aes(x=Index, y=LibrarySize, color=Sample_or_Control)) + geom_point()
+otutable <- data.frame(otu_table(day))
+
+contamdf.freq <- isContaminant(day, method="frequency", conc="num_DNAconc")
+head(contamdf.freq)
+head(which(contamdf.freq$contaminant))
+table(contamdf.freq$contaminant)
+plot_frequency(day, taxa=taxa_names(day)[which(contamdf.freq$contaminant)], conc="num_DNAconc") + 
+  xlab("DNA Concentration (PicoGreen fluorescent intensity)")
+
+
+sample_data(day)$is.neg <- sample_data(day)$Sample_or_Control == "Control Sample"
+
+contamdf.prev <- isContaminant(day, method="prevalence", neg="is.neg")
+table(contamdf.prev$contaminant)
+
+ps.pa <- transform_sample_counts(day, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "Control Sample", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "True Sample", ps.pa)
+# Make data.frame of prevalence in positive and negative samples
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      contaminant=contamdf.prev$contaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+
+contamdf.both <- isContaminant(day, method="either", neg="is.neg", conc ="num_DNAconc")
+table(contamdf.both$contaminant)
+tax_table(day)[which(contamdf.both$contaminant)]
+
+plot_frequency(day, taxa=taxa_names(day)[which(contamdf.both$contaminant)], conc="num_DNAconc") + 
+  xlab("DNA Concentration (PicoGreen fluorescent intensity)")
+
+
+daycontam <- taxa_names(day)[which(contamdf.both$contaminant)]
+```
+
+
+```{r identify contaminants library1}
+
+#there are no sequences for the negative controls for the night samples, so cannot filter for contam based on NC, only on [conc]
+
+night <- subset_samples(ZHANmzg, Sequencing.Run == "1")
+night <- filter_taxa(night, function(x) sum(x > 0) > 1, TRUE)
+night <- subset_samples(night, sample_sums(night) > 0)
+sample_data(night)$num_DNAconc <- as.numeric(sample_data(night)$DNA.Conc...ug.mL.)
+sample_data(night)$num_DNAconc[sample_data(night)$num_DNAconc < 0 ] <- 1
+sample_data(night)$Sample_or_Control <- "True Sample" 
+sample_data(night)$Sample_or_Control[sample_data(night)$net == "Ext. control"] <- "Control Sample"
+
+df <- as.data.frame(sample_data(night)) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(night)
+df <- df[order(df$LibrarySize),]
+df$Index <- seq(nrow(df))
+#df$Sample_or_Control <- rep("Sample", n = nrow(df))
+#df$Sample_or_Control[df$net == ""] <- "Control"
+ggplot(data=df, aes(x=Index, y=LibrarySize, color=Sample_or_Control)) + geom_point()
+otutable <- data.frame(otu_table(night))
+
+contamdf.freq <- isContaminant(night, method="frequency", conc="num_DNAconc")
+head(contamdf.freq)
+head(which(contamdf.freq$contaminant))
+table(contamdf.freq$contaminant)
+plot_frequency(night, taxa=taxa_names(night)[which(contamdf.freq$contaminant)], conc="num_DNAconc") + 
+  xlab("DNA Concentration (PicoGreen fluorescent intensity)")
+
+
+sample_data(night)$is.neg <- sample_data(night)$Sample_or_Control == "Control Sample"
+
+contamdf.prev <- isContaminant(night, method="prevalence", neg="is.neg")
+table(contamdf.prev$contaminant)
+
+contamdf.both <- isContaminant(night, method="either", neg="is.neg", conc ="num_DNAconc")
+table(contamdf.both$contaminant)
+tax_table(night)[which(contamdf.both$contaminant)]
+
+plot_frequency(night, taxa=taxa_names(night)[which(contamdf.both$contaminant)], conc="num_DNAconc") + 
+  xlab("DNA Concentration (PicoGreen fluorescent intensity)")
+
+nightcontam <- taxa_names(day)[which(contamdf.freq$contaminant)]
+
+
+
+```
+
+
+```{r identify contaminants library3}
+day <- subset_samples(ZHANmzg, Sequencing.Run == "3")
+day <- filter_taxa(day, function(x) sum(x > 0) > 1, TRUE)
+day <- subset_samples(day, sample_sums(day) > 0)
+sample_data(day)$num_DNAconc <- as.numeric(sample_data(day)$DNA.Conc...ug.mL.)
+sample_data(day)$num_DNAconc[sample_data(day)$num_DNAconc < 0 ] <- 1
+sample_data(day)$Sample_or_Control <- "True Sample" 
+sample_data(day)$Sample_or_Control[sample_data(day)$Net == "nc"] <- "Control Sample"
+
+df <- as.data.frame(sample_data(day)) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(day)
+df <- df[order(df$LibrarySize),]
+df$Index <- seq(nrow(df))
+#df$Sample_or_Control <- rep("Sample", n = nrow(df))
+#df$Sample_or_Control[df$net == ""] <- "Control"
+ggplot(data=df, aes(x=Index, y=LibrarySize, color=Sample_or_Control)) + geom_point()
+otutable <- data.frame(otu_table(day))
+
+contamdf.freq <- isContaminant(day, method="frequency", conc="num_DNAconc")
+head(contamdf.freq)
+head(which(contamdf.freq$contaminant))
+table(contamdf.freq$contaminant)
+#plot_frequency(day, taxa=taxa_names(day)[which(contamdf.freq$contaminant)], conc="num_DNAconc") + 
+  xlab("DNA Concentration (PicoGreen fluorescent intensity)")
+
+
+sample_data(day)$is.neg <- sample_data(day)$Sample_or_Control == "Control Sample"
+
+contamdf.prev <- isContaminant(day, method="prevalence", neg="is.neg")
+table(contamdf.prev$contaminant)
+
+ps.pa <- transform_sample_counts(day, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "Control Sample", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "True Sample", ps.pa)
+# Make data.frame of prevalence in positive and negative samples
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      contaminant=contamdf.prev$contaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+
+contamdf.both <- isContaminant(day, method="either", neg="is.neg", conc ="num_DNAconc")
+table(contamdf.both$contaminant)
+tax_table(day)[which(contamdf.both$contaminant)]
+
+plot_frequency(day, taxa=taxa_names(day)[which(contamdf.both$contaminant)], conc="num_DNAconc") + 
+  xlab("DNA Concentration (PicoGreen fluorescent intensity)")
+
+
+
+
+lib3 <- taxa_names(day)[which(contamdf.both$contaminant)]
+```
+
+```{r filter}
+
+contam <- c(daycontam, nightcontam, lib3)
+
+##filter out contaminants
+contams <- contam
+allTaxa <- taxa_names(ZHANmzg)
+goodTaxa <- allTaxa[!(allTaxa %in% contams)]
+ZHANmzg_contam <- prune_taxa(contams, ZHANmzg)
+ZHANmzg_nocontam <- prune_taxa(goodTaxa, ZHANmzg)
+ntaxa(ZHANmzg)
+ntaxa(ZHANmzg_nocontam)
+
+
+contamtax <- data.frame(tax_table(ZHANmzg_contam))
+write.csv(contamtax, file = "z18Scontam_tax.csv")
+contamab <- data.frame(otu_table(ZHANmzg_contam))
+write.csv(contamab, file = "z18Scontam_ab.csv")
+contam_samdat <- data.frame(sample_data(ZHANmzg_contam))
+write.csv(contam_samdat, file = "z18Scontam_sampdat.csv")
+
+##remove Neg controls
+z18Sclean_MZG <- subset_samples(ZHANmzg, sample_data(ZHANmzg)$Net != "Ext. control")
+z18Sclean_MZG <- subset_samples(z18Sclean_MZG, sample_data(z18Sclean_MZG)$Cycle != "Extraction control")
+z18Sclean_MZG <- subset_samples(z18Sclean_MZG, sample_data(z18Sclean_MZG)$Net != "")
+z18Sclean_MZG <- subset_samples(z18Sclean_MZG, sample_data(z18Sclean_MZG)$Net != "nc")
+z18Sclean_MZG <- prune_taxa(goodTaxa, z18Sclean_MZG)
+
+
+
+
+save(z18Sclean_MZG, file = "~/Documents/Chapter1/for_ms/z18S_v3biom_MZG_clean.Rdat")
+
+
+```
+
+
+
+
+```{r load COI filter to zp}
+load("~/Documents/Chapter1/for_ms/COI_v3biom_MZG.Rdat")
+
+unique(tax_table(COIclean_MZG)[,1])
+
+#COIclean_zooplankton <- subset_taxa(COI_clean_ncbi_tax, ta2!="Chordata") includes tunicates
+COIclean_zooplankton <- subset_taxa(COIclean_MZG, Kingdom=="Animalia") #keep only animals
+
+unique(tax_table(COIclean_zooplankton)[,2])
+
+#we want to keep the NA - this is an artefact of ncbi taxonomy levels, rather than a real 'non-identification'.
+#COIclean_zooplankton <- subset_taxa(COIclean_zooplankton, ta2!="Haptista" | is.na(ta2))
+#COIclean_zooplankton <- subset_taxa(COIclean_zooplankton, ta2!="Rhodophyta" | is.na(ta2))
+#COIclean_zooplankton <- subset_taxa(COIclean_zooplankton, ta2!="Bacillariophyta" | is.na(ta2))
+#COIclean_zooplankton <- subset_taxa(COIclean_zooplankton, ta2!="Chlorophyta" | is.na(ta2))
+#COIclean_zooplankton <- subset_taxa(COIclean_zooplankton, ta2!="Ascomycota" | is.na(ta2))
+#COIclean_zooplankton <- subset_taxa(COIclean_zooplankton, ta2!="Bacteroidetes" | is.na(ta2))
+#COIclean_zooplankton <- subset_taxa(COIclean_zooplankton, ta2!="Firmicutes" | is.na(ta2))
+#COIclean_zooplankton <- subset_taxa(COIclean_zooplankton, ta2!="Discosea" | is.na(ta2))
+#COIclean_zooplankton <- subset_taxa(COIclean_zooplankton, ta2!="Basidiomycota" | is.na(ta2))
+
+
+
+unique(tax_table(COIclean_zooplankton)[,4])
+#OK - probably some non-zooplankton and definitely some meroplankton, but hard to filter those from the parasites which are likely real
+#the fact that the MZG database is just zooplankton actually helps a lot here - non-zooplankton sequences aren't IDd.
+
+
+save(COIclean_zooplankton, file = "~/Documents/Chapter1/for_ms/COI_v3biom_ZOOPLANKTON.Rdat")
+
+```
+
+
+
+```{r load 18S filter to zp}
+load("~/Documents/Chapter1/for_ms/z18S_v3biom_MZG_clean.Rdat")
+
+unique(tax_table(z18Sclean_MZG)[,2])
+ZHANclean_zooplankton <- subset_taxa(z18Sclean_MZG, Kingdom=="Animalia") #keep only animals
+unique(tax_table(ZHANclean_zooplankton)[,4])
+
+#OK - probably some non-zooplankton and definitely some meroplankton, but hard to filter those from the parasites which are likely real
+
+save(ZHANclean_zooplankton, file = "~/Documents/Chapter1/for_ms/18S_v3biom_ZOOPLANKTON.Rdat")
+
+
+
+```
+
+
