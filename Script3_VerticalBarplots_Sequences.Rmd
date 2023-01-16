@@ -1,0 +1,614 @@
+---
+title: "Script3_VerticalBarplots_Sequences"
+output: html_document
+date: "2022-10-13"
+---
+
+```{r load data}
+load("COIdataforASM.rdat")
+load("ZHANdataforASM.rdat")
+load("tables_bothmarkers_absentspeciesremoved_COIstopcodonsremoved_traitsadded_withDVM.Rdat")
+```
+
+#EUCALANIDS
+plot zooscan abundance of eucalanids and vertical distribution of eucalanus californicus (or all eucalanidae?) reads 
+
+```{r eucalanids COI}
+plot_bar_width_double_euphausiids <- function (physeq, x = "Sample", y = "Abundance", 
+  title = NULL, facet_grid = NULL, w = "binwidth") {
+  mdf = psmelt(physeq)
+ # mdf$Species.fac <- as.factor(mdf$Species)
+  disp1 <- max(mdf$Abundance)*1.05
+  mdf$Abundance[mdf$Diel == "night"] <- mdf$Abundance[mdf$Diel == "night"]*-1
+  mdf$Copepods..Eucalanid.bm[mdf$Diel == "night"] <- mdf$Copepods..Eucalanid.bm[mdf$Diel == "night"]*-1
+  p <- ggplot(mdf, aes(width = binwidth*.9)) + 
+    annotate("rect", xmin = -Inf,
+                  xmax = Inf,
+                  ymin =  -Inf,
+                  ymax = 0, fill = "grey60", alpha = 0.5) + 
+    geom_bar(aes(x = depthmean, y = Abundance, fill = Species), stat = "identity", position = "stack") + 
+    geom_point(aes(x = depthmean, y = Copepods..Eucalanid.bm/40, group = Diel, color = "Eucalanid \ncopepods")) + 
+    geom_line(aes(x = depthmean, y = Copepods..Eucalanid.bm/40, group = Diel)) + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4), limits = c(-disp1, disp1), labels=abs,
+                     sec.axis = sec_axis(~.*40, name = bquote('Zooscan eucalanid biomass '(mgC/m^3)), scales::pretty_breaks(n = 4), labels = abs)) + 
+    theme_bw() + 
+    #theme(axis.text.x = element_text(angle = 90)) + 
+    scale_fill_manual(values = mycolors, labels = c("18S", "COI"), drop = FALSE) +
+    #scale_fill_manual(values = mycolors, labels = c("mtCOI sequences", "18S sequences"), drop = FALSE, limits = force) +
+    scale_color_manual(values = "black", name = paste('Zooscan biomass', sep = '')) +# name = bquote(atop('Zooscan Biomass ', (mgC/m^2)))) + 
+    coord_flip() + 
+    scale_x_reverse() +
+    labs(x = "Depth (m)", y = expression(paste('Relative abundance of Eucalanid sequences (COI)'))) +
+  geom_hline(yintercept = 0, size = 0.2) 
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(facet_grid)
+  }
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+
+mycolors <- c("#A4D3EE", "#A6F0CA")
+names(mycolors) <- c("null", "Eucalanus californicus")
+
+
+eucal_phyloseq <- subset_taxa(transform_sample_counts(COI, function(x) x / sum(x) ), Family == "Eucalanidae")
+#ab_eucal_phyloseq <- prune_taxa(names(sort(taxa_sums(eucal_phyloseq), TRUE)[1:10]), eucal_phyloseq)
+ab_eucal_phyloseq <- eucal_phyloseq
+ab_eucal_phyloseq <- tax_glom(ab_eucal_phyloseq, taxrank = "Species")
+
+
+
+p_COI <- plot_bar_width_double_euphausiids(ab_eucal_phyloseq, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4, labeller=as_labeller(cyclenames)) + 
+  theme(strip.text = element_text(size=7)) +
+  theme(plot.title = element_text(size=7), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  guides(shape = guide_legend("Zooscan Biomass", override.aes = list(linetype = c("solid"),
+                                                                      shape = c(16), order = 1),
+                              order = 1),
+         fill =  guide_legend(expression('Eucalanid sequences'),
+                              order = 2))
+
+p_COI
+
+```
+
+```{r plot eucalanids COI}
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/Eucalanidbiomassreadscomparison.pdf", height = 4.5, width = 9)
+p_COI
+dev.off()
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/Eucalanidbiomassreadscomparison_nolegend.pdf", height = 4.5, width = 9)
+p_COI + theme(legend.position="none")
+dev.off()
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/Eucalanidbiomassreadscomparison.jpeg", height = 4.5, width = 9, unit = "in", quality = 100, res = 300)
+p_COI
+dev.off()
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/Eucalanidbiomassreadscomparison_nolegend.jpeg", height = 4.5, width = 9, unit = "in", quality = 100, res = 300)
+p_COI + theme(legend.position="none")
+dev.off()
+```
+
+
+plot zooscan abundance of eucalanids and vertical distribution of eucalanus californicus (or all eucalanidae?) reads 
+
+```{r eucalanids 18S}
+plot_bar_width_double_eucal <- function (physeq, x = "Sample", y = "Abundance", 
+  title = NULL, facet_grid = NULL, w = "binwidth") {
+  mdf = psmelt(physeq)
+  disp1 <- max(mdf$Abundance)*1.1
+  mdf$Abundance[mdf$Diel == "night"] <- mdf$Abundance[mdf$Diel == "night"]*-1
+  mdf$Copepods..Eucalanid.bm[mdf$Diel == "night"] <- mdf$Copepods..Eucalanid.bm[mdf$Diel == "night"]*-1
+  p <- ggplot(mdf, aes(width = binwidth*.9)) + 
+    annotate("rect", xmin = -Inf,
+                  xmax = Inf,
+                  ymin =  -Inf,
+                  ymax = 0, fill = "grey60", alpha = 0.5) + 
+    geom_bar(aes(x = depthmean, y = Abundance, fill = Species), stat = "identity", position ="stack") + 
+    geom_point(aes(x = depthmean, y = Copepods..Eucalanid.bm/40, group = Diel, color = "Eucalanid \ncopepods")) + 
+    geom_line(aes(x = depthmean, y = Copepods..Eucalanid.bm/40, group = Diel)) + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4), limits = c(-disp1, disp1), labels=abs,
+                     sec.axis = sec_axis(~.*40, name = bquote('Zooscan eucalanid biomass '(mgC/m^3)), scales::pretty_breaks(n = 4), labels = abs)) + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle = 90)) + 
+    scale_fill_manual(values = mycolors, labels = c("18S sequences", "COI sequences"), drop = FALSE) +
+    scale_color_manual(values = "black", name = paste('Zooscan biomass', sep = '')) +# name = bquote(atop('Zooscan Biomass ', (mgC/m^2)))) + 
+    coord_flip() + 
+    scale_x_reverse() +
+    labs(x = "Depth (m)", y = expression(paste('Relative abundance of Eucalanid sequences (18S)'))) +
+  geom_hline(yintercept = 0, size = 0.2) 
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(facet_grid)
+  }
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+
+mycolors <- c("#A4D3EE", "#A6F0CA")
+names(mycolors) <- c("Eucalanus californicus", "null")
+
+
+eucal_phyloseq <- subset_taxa(transform_sample_counts(ZHAN, function(x) x / sum(x) ), Family == "Eucalanidae")
+#ab_eucal_phyloseq <- prune_taxa(names(sort(taxa_sums(eucal_phyloseq), TRUE)[1:10]), eucal_phyloseq)
+ab_eucal_phyloseq <- eucal_phyloseq
+ab_eucal_phyloseq <- tax_glom(ab_eucal_phyloseq, taxrank = "Species")
+
+#plot_bar(subset_taxa(ZHAN, Genus == "Eucalanus"), fill = "Species", x = "Net") + facet_grid(Diel~Cycle, scales = "free") + coord_flip()
+
+p_18S <- plot_bar_width_double_eucal(ab_eucal_phyloseq, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4, labeller=as_labeller(cyclenames)) + 
+  theme(strip.text = element_text(size=7)) +
+  theme(plot.title = element_text(size=7), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  guides(shape = guide_legend("Zooscan Biomass", override.aes = list(linetype = c("solid"),
+                                                                      shape = c(16)),
+                              order = 1),
+         fill =  guide_legend(expression('Eucalanid sequences'),
+                              order = 2))
+
+p_18S
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/Eucalanidbiomassreadscomparison_18S.pdf", height = 4.5, width = 9)
+p_18S
+dev.off()
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/Eucalanidbiomassreadscomparison_nolegend_18S.pdf", height = 4.5, width = 9)
+p_18S + theme(legend.position="none")
+dev.off()
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/Eucalanidbiomassreadscomparison_18S.jpeg", height = 4.5, width = 9, unit = "in", quality = 150, res = 300)
+p_18S
+dev.off()
+
+```
+
+```{r plot 18S and COI together (eucalanids)}
+arrange <- ggarrange(p_18S, p_COI, nrow = 2, ncol = 1, align = "hv", labels = "auto", common.legend = TRUE, legend = "right")
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/Eucalanidbiomassreadscomparison.pdf", height = 6, width = 6.65)
+arrange
+dev.off()
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/Eucalanidbiomassreadscomparison.jpeg", height = 6, width = 6.65, unit = "in", quality = 100, res = 300)
+arrange
+dev.off()
+
+```
+
+
+#SIPHS 
+```{r siphs}
+
+plot_bar_width_double_siphs <- function (physeq, x = "Sample", y = "Abundance", 
+  title = NULL, facet_grid = NULL, w = "binwidth") {
+  mdf = psmelt(physeq)
+  disp1 <- max(mdf$Abundance)*1.1
+  mdf$Abundance[mdf$Diel == "night"] <- mdf$Abundance[mdf$Diel == "night"]*-1
+ # mdf$Copepods..Eucalanid.bm[mdf$Diel == "night"] <- mdf$Copepods..Eucalanid.bm[mdf$Diel == "night"]*-1
+  p <- ggplot(mdf, aes(width = binwidth*.9)) + 
+    annotate("rect", xmin = -Inf,
+                  xmax = Inf,
+                  ymin =  -Inf,
+                  ymax = 0, fill = "grey60", alpha = 0.5) + 
+    geom_bar(aes(x = depthmean, y = Abundance, fill = Species), stat = "identity") + 
+  #  geom_point(aes(x = depthmean, y = Copepods..Eucalanid.bm*3100, group = Diel, color = "Eucalanid \ncopepods")) + 
+  #  geom_line(aes(x = depthmean, y = Copepods..Eucalanid.bm*3100, group = Diel)) + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = c(-disp1, disp1)) + 
+    theme_bw() + 
+  #  theme(axis.text.x = element_text(angle = 90)) + 
+    scale_fill_brewer(type = "qual", palette = "Set1") +
+    coord_flip() + 
+    scale_x_reverse() +
+    labs(x = "Depth (m)", y = "Relative Abundance") +
+  geom_hline(yintercept = 0, size = 0.2) 
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(facet_grid)
+  }
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+
+hydrozoans <- subset_taxa(transform_sample_counts(COI, function(x) x / sum(x) ), Class == "Hydrozoa")
+siphs <- subset_taxa(transform_sample_counts(COI, function(x) x / sum(x) ), Order == "Siphonophorae")
+#Cystonectae: Physaliidae, Rhizophysidae 
+
+#Calycophorae:  Abylidae, Clausophyidae, Diphyidae, Hippopodiidae, Prayidae, Sphaeronectida, Tottonophyidae
+
+#Physonectae: Agalmatidae Apolemiidae Cordagalmatidae Erennidae Forskaliidae Physophoridae Pyrostephidae Resomiidae Rhodaliidae StephanomiidaeAgalmidae Angelidae Apolemiadae Athorybiadae Athorybiidae, Forskalidae, Physophorae, Rhodalidae
+
+calycoph <- subset_taxa(transform_sample_counts(COI, function(x) x / sum(x) ), Family == "Abylidae" | Family == "Diphyidae" | Family == "Prayidae")
+physonect <- subset_taxa(transform_sample_counts(COI, function(x) x / sum(x) ), Family == "Apolemiidae" | Family == "Agalmatidae" | Family == "Physophoridae")
+
+ab_calycophs <- prune_taxa(names(sort(taxa_sums(calycoph), TRUE)[1:17]), calycoph)
+ab_physonects <- prune_taxa(names(sort(taxa_sums(physonect), TRUE)[1:10]), physonect)
+#ab_eucal_phyloseq <- prune_taxa(names(sort(taxa_sums(eucal_phyloseq), TRUE)[1:10]), eucal_phyloseq)
+#thals_glom <- tax_glom(thals, taxrank = "Family")
+
+#plot_bar(subset_taxa(ZHAN, Genus == "Eucalanus"), fill = "Species", x = "Net") + facet_grid(Diel~Cycle, scales = "free") + coord_flip()
+
+first12 <- c(brewer.pal(name="Set1", n = 8), brewer.pal(name="Dark2", n = 8))[1:12]
+next6 <- c(brewer.pal(name="Set1", n = 8), brewer.pal(name="Dark2", n = 8))[13:18]
+next6 <- c("lightskyblue1", "#fabed4", "#dcbeff", "#aaffc3", "#fffac8", "#ffd8b1")
+
+pc <- plot_bar_width_double_siphs(ab_calycophs, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4, labeller=as_labeller(cyclenames)) + 
+  theme(strip.text = element_text(size=7)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  scale_fill_manual(values = first12, name = "Calycophorans")
+pc
+
+
+tax_table(ab_physonects)[,12][(tax_table(ab_physonects)[,12] == ""),] <- "Apolemia sp."
+pp <- plot_bar_width_double_siphs(ab_physonects, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4, labeller=as_labeller(cyclenames)) + 
+  theme(strip.text = element_text(size=7)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))  + 
+  scale_fill_manual(values = next6, name = "Physonects")
+
+pp
+
+
+arrange <- ggarrange(pc, pp, ncol = 1, nrow = 2, align = "hv", labels = "auto")
+#gsave("arrangedplot.png", arrange)
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/siphonophores_all.pdf", height = 5, width = 6.65)
+#specify to save plots in 2x2 grid
+arrange
+dev.off()
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/siphonophores_all.jpeg", height = 5, width = 6.65, unit = "in", quality = 100, res = 300)
+#specify to save plots in 2x2 grid
+arrange
+dev.off()
+
+
+#presence absence
+ab_calycophs_pa <- phyloseq_standardize_otu_abundance(ab_calycophs, method = "pa")
+ab_physonects_pa <- phyloseq_standardize_otu_abundance(ab_physonects, method = "pa")
+#ab_eucal_phyloseq <- prune_taxa(names(sort(taxa_sums(eucal_phyloseq), TRUE)[1:10]), eucal_phyloseq)
+#thals_glom <- tax_glom(thals, taxrank = "Family")
+
+#plot_bar(subset_taxa(ZHAN, Genus == "Eucalanus"), fill = "Species", x = "Net") + facet_grid(Diel~Cycle, scales = "free") + coord_flip()
+
+pc <- plot_bar_width_double_siphs(ab_calycophs_pa, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4, labeller=as_labeller(cyclenames)) + 
+  theme(strip.text = element_text(size=7)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  scale_fill_manual(values = first12, name = "Calycophorans") + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = c(-6,6)) + ylab("Number of COI OTUs")
+pc
+
+#next5 <- c(brewer.pal(name="Set1", n = 8), brewer.pal(name="Dark2", n = 2))[6:10]
+pp <- plot_bar_width_double_siphs(ab_physonects_pa, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4, labeller=as_labeller(cyclenames)) + 
+  theme(strip.text = element_text(size=7)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))  + 
+  scale_fill_manual(values = next6, name = "Physonects") + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = c(-6,6)) + ylab("Number of COI OTUs")
+
+pp
+
+
+arrange <- ggarrange(pc, pp, ncol = 1, nrow = 2, align = "hv", labels = "auto")
+#gsave("arrangedplot.png", arrange)
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/siphonophores_all_pa.pdf", height = 6.5, width = 7.65)
+#specify to save plots in 2x2 grid
+arrange
+dev.off()
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/siphonophores_all_pa.jpeg", height = 6.5, width = 7.65, unit = "in", quality = 100, res = 300)
+arrange
+dev.off()
+
+```
+
+
+#EUPHAUSIIDS
+```{r euphausiids}
+
+plot_bar_width_double_euphausiids <- function (physeq, x = "Sample", y = "Abundance", 
+  title = NULL, facet_grid = NULL, w = "binwidth") {
+  mdf = psmelt(physeq)
+  disp1 <- max(mdf$Abundance)*1.1
+  mdf$Abundance[mdf$Diel == "night"] <- mdf$Abundance[mdf$Diel == "night"]*-1
+  mdf$Euphausiids.bm[mdf$Diel == "night"] <- mdf$Euphausiids.bm[mdf$Diel == "night"]*-1
+  p <- ggplot(mdf, aes(width = binwidth*.9)) + 
+    annotate("rect", xmin = -Inf,
+                  xmax = Inf,
+                  ymin =  -Inf,
+                  ymax = 0, fill = "grey60", alpha = 0.5) + 
+    geom_bar(aes(x = depthmean, y = Abundance, fill = Species), stat = "identity") + 
+    geom_point(aes(x = depthmean, y = Euphausiids.bm/24, group = Diel, color = "Euphausiids (all)")) + 
+    geom_line(aes(x = depthmean, y = Euphausiids.bm/24, group = Diel)) + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4), limits = c(-disp1, disp1), labels=abs,
+                     sec.axis = sec_axis(~.*24, name = bquote('Zooscan euphausiid biomass '(mgC/m^3)), scales::pretty_breaks(n = 4), labels = abs)) + 
+    theme_bw() + 
+  #  theme(axis.text.x = element_text(angle = 90)) + 
+    scale_fill_brewer(type = "qual", palette = "Set1") +
+    scale_color_manual(values = "black", name = paste('Zooscan biomass', sep = '')) +# name = bquote(atop('Zooscan Biomass ', (mgC/m^2)))) + 
+coord_flip() + 
+    scale_x_reverse() +
+    labs(x = "Depth (m)", y = "Relative abundance of COI sequences") +
+  geom_hline(yintercept = 0, size = 0.2) 
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(facet_grid)
+  }
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+
+euphausiids <- subset_taxa(transform_sample_counts(COI, function(x) x / sum(x) ), Order == "Euphausiacea")
+euphausiids_glom <- tax_glom(euphausiids, taxrank = "Species")
+
+ab_euph_glom <- prune_taxa(names(sort(taxa_sums(euphausiids_glom), TRUE)[1:6]), euphausiids_glom)
+
+pe <- plot_bar_width_double_euphausiids(ab_euph_glom, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4, labeller=as_labeller(cyclenames)) + 
+  theme(strip.text = element_text(size=7)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  scale_fill_brewer(type = "qual", palette = "Dark2", name = "Euphausiid species")
+pe
+
+
+#gsave("arrangedplot.png", arrange)
+#pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/euphausiids_top6.pdf", height = 4.5, width = 9)
+#pe
+#dev.off()
+
+#gsave("arrangedplot.png", arrange)
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/euphausiids_top6_withzooscan.pdf", height = 4, width = 6.65)
+pe
+dev.off()
+
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/euphausiids_top6_withzooscan.jpeg", height = 4, width = 6.65, unit = "in", quality = 100, res = 300)
+pe
+dev.off()
+
+```
+
+
+```{r euphausiids 18S}
+
+plot_bar_width_double_euphausiids <- function (physeq, x = "Sample", y = "Abundance", 
+  title = NULL, facet_grid = NULL, w = "binwidth") {
+  mdf = psmelt(physeq)
+  disp1 <- max(mdf$Abundance)*1.1
+  mdf$Abundance[mdf$Diel == "night"] <- mdf$Abundance[mdf$Diel == "night"]*-1
+  mdf$Euphausiids.bm[mdf$Diel == "night"] <- mdf$Euphausiids.bm[mdf$Diel == "night"]*-1
+  p <- ggplot(mdf, aes(width = binwidth*.9)) + 
+    annotate("rect", xmin = -Inf,
+                  xmax = Inf,
+                  ymin =  -Inf,
+                  ymax = 0, fill = "grey60", alpha = 0.5) + 
+    geom_bar(aes(x = depthmean, y = Abundance, fill = OTU), stat = "identity") + 
+    geom_point(aes(x = depthmean, y = Euphausiids.bm/30, group = Diel, color = "Euphausiids (all)")) + 
+    geom_line(aes(x = depthmean, y = Euphausiids.bm/30, group = Diel)) + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4), limits = c(-disp1, disp1), labels=abs,
+                     sec.axis = sec_axis(~.*24, name = bquote('Zooscan euphausiid biomass '(mgC/m^3)), scales::pretty_breaks(n = 4), labels = abs)) + 
+    theme_bw() + 
+  #  theme(axis.text.x = element_text(angle = 90)) + 
+    scale_fill_brewer(type = "qual", palette = "Set1") +
+    scale_color_manual(values = "black", name = paste('Zooscan biomass', sep = '')) +# name = bquote(atop('Zooscan Biomass ', (mgC/m^2)))) + 
+coord_flip() + 
+    scale_x_reverse() +
+    labs(x = "Depth (m)", y = "Relative abundance of 18S sequences") +
+  geom_hline(yintercept = 0, size = 0.2) 
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(facet_grid)
+  }
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+euphausiids18S <- ZHAN
+tax_table(euphausiids18S)[,9][tax_table(euphausiids18S)[,9]=="Eucarida"] <- "Euphausiacea"
+euphausiids18S <- subset_taxa(transform_sample_counts(euphausiids18S, function(x) x / sum(x) ), Order == "Euphausiacea")
+#euphausiids18S_glom <- tax_glom(euphausiids18S, taxrank = "Order")
+
+ab_euph18S_glom <- prune_taxa(names(sort(taxa_sums(euphausiids18S), TRUE)[1:8]), euphausiids18S)
+
+pe <- plot_bar_width_double_euphausiids(ab_euph18S_glom, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4, scales = "free_x", labeller=as_labeller(cyclenames)) + 
+  theme(strip.text = element_text(size=7)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  scale_fill_brewer(type = "qual", palette = "Dark2", name = "18S Euphausiid ASVs", labels = c("Euphausiidae sp. 1", "Euphausiidae sp. 2", "Euphausiidae sp. 3", "Euphausiidae sp. 4", "Euphausiidae sp. 5", "Euphausiidae sp. 6", "Euphausiidae sp. 7", "Euphausiidae sp. 8"))
+pe
+
+
+#gsave("arrangedplot.png", arrange)
+#pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/euphausiids_top6.pdf", height = 4.5, width = 9)
+#pe
+#dev.off()
+
+#gsave("arrangedplot.png", arrange)
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/euphausiids_top6_withzooscan18S.pdf", height = 4, width = 6.65)
+pe
+dev.off()
+
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/euphausiids_top6_withzooscan18S.jpeg", height = 4, width = 6.65, unit = "in", quality = 100, res = 300)
+pe
+dev.off()
+
+```
+
+#OITHONIDS AND THALIACEANS
+
+
+```{r thaliaceans tunicates}
+plot_bar_width_double_thaliaceans <- function (physeq, x = "Sample", y = "Abundance", 
+  title = NULL, facet_grid = NULL, w = "binwidth") {
+  mdf = psmelt(physeq)
+  disp1 <- max(mdf$Abundance)*1.05
+  mdf$Abundance[mdf$Diel == "night"] <- mdf$Abundance[mdf$Diel == "night"]*-1
+ # mdf$Copepods..Eucalanid.bm[mdf$Diel == "night"] <- mdf$Copepods..Eucalanid.bm[mdf$Diel == "night"]*-1
+  p <- ggplot(mdf, aes(width = binwidth*.9)) + 
+    annotate("rect", xmin = -Inf,
+                  xmax = Inf,
+                  ymin =  -Inf,
+                  ymax = 0, fill = "grey60", alpha = 0.5) + 
+        geom_bar(aes(x = depthmean, y = Abundance, fill = Family), stat = "identity") + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4), limits = c(-disp1, disp1), labels=abs) +
+  #  geom_point(aes(x = depthmean, y = Copepods..Eucalanid.bm*3100, group = Diel, color = "Eucalanid \ncopepods")) + 
+  #  geom_line(aes(x = depthmean, y = Copepods..Eucalanid.bm*3100, group = Diel)) + 
+    theme_bw() + 
+  #  theme(axis.text.x = element_text(angle = 90)) + 
+    scale_fill_brewer(type = "qual", palette = "Set1") +
+    coord_flip() + 
+    scale_x_reverse() +
+    labs(x = "Depth (m)", y = "Relative Abundance") +
+  geom_hline(yintercept = 0, size = 0.2) 
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(facet_grid)
+  }
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+
+thals <- subset_taxa(transform_sample_counts(ZHAN, function(x) x / sum(x) ), Subphylum == "Tunicata")
+#ab_eucal_phyloseq <- prune_taxa(names(sort(taxa_sums(eucal_phyloseq), TRUE)[1:10]), eucal_phyloseq)
+thals_glom <- tax_glom(thals, taxrank = "Family")
+
+#plot_bar(subset_taxa(ZHAN, Genus == "Eucalanus"), fill = "Species", x = "Net") + facet_grid(Diel~Cycle, scales = "free") + coord_flip()
+
+
+p <- plot_bar_width_double_thaliaceans(thals_glom, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4, scales = "free_x", labeller=as_labeller(cyclenames)) + 
+  theme(strip.text = element_text(size = 7)) +  
+  theme(plot.title = element_text(size=7), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+
+p <- plot_bar_width_double_thaliaceans(thals_glom, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4, labeller=as_labeller(cyclenames)) + 
+  theme(strip.text = element_text(size = 7)) +  
+  theme(plot.title = element_text(size=7), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+
+
+p
+
+thaliaceans_18S <- p
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/Tunicates_relabundance.pdf", height = 3, width = 6.65)
+p
+dev.off()
+
+
+
+```
+
+
+```{r oithonids}
+plot_bar_width_double_oithona_free <- function (physeq, x = "Sample", y = "Abundance", 
+  title = NULL, facet_grid = NULL, w = "binwidth") {
+  mdf = psmelt(physeq)
+  disp1 <- max(mdf$Abundance)*1.05
+  mdf$Abundance[mdf$Diel == "night"] <- mdf$Abundance[mdf$Diel == "night"]*-1
+ # mdf$Copepods..Eucalanid.bm[mdf$Diel == "night"] <- mdf$Copepods..Eucalanid.bm[mdf$Diel == "night"]*-1
+  p <- ggplot(mdf, aes(width = binwidth*.9)) + 
+   annotate("rect", xmin = -Inf,
+                  xmax = Inf,
+                  ymin =  -Inf,
+                  ymax = 0, fill = "grey60", alpha = 0.5) + 
+    geom_bar(aes(x = depthmean, y = Abundance, fill = Family), stat = "identity") + 
+  #  geom_point(aes(x = depthmean, y = Copepods..Eucalanid.bm*3100, group = Diel, color = "Eucalanid \ncopepods")) + 
+  #  geom_line(aes(x = depthmean, y = Copepods..Eucalanid.bm*3100, group = Diel)) + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs) +
+    theme_bw() + 
+  #  theme(axis.text.x = element_text(angle = 90)) + 
+    scale_fill_brewer(type = "qual", palette = "Dark2") +
+    coord_flip() + 
+    scale_x_reverse() +
+    labs(x = "Depth (m)", y = "Relative Abundance") +
+  geom_hline(yintercept = 0, size = 0.2) 
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(facet_grid)
+  }
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+
+plot_bar_width_double_oithona_fixed <- function (physeq, x = "Sample", y = "Abundance", 
+  title = NULL, facet_grid = NULL, w = "binwidth") {
+  mdf = psmelt(physeq)
+  disp1 <- max(mdf$Abundance)*1.05
+  mdf$Abundance[mdf$Diel == "night"] <- mdf$Abundance[mdf$Diel == "night"]*-1
+ # mdf$Copepods..Eucalanid.bm[mdf$Diel == "night"] <- mdf$Copepods..Eucalanid.bm[mdf$Diel == "night"]*-1
+  p <- ggplot(mdf, aes(width = binwidth*.9)) + 
+   annotate("rect", xmin = -Inf,
+                  xmax = Inf,
+                  ymin =  -Inf,
+                  ymax = 0, fill = "grey60", alpha = 0.5) + 
+    geom_bar(aes(x = depthmean, y = Abundance, fill = Family), stat = "identity") + 
+  #  geom_point(aes(x = depthmean, y = Copepods..Eucalanid.bm*3100, group = Diel, color = "Eucalanid \ncopepods")) + 
+  #  geom_line(aes(x = depthmean, y = Copepods..Eucalanid.bm*3100, group = Diel)) + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4), limits = c(-disp1, disp1), labels=abs) +
+    theme_bw() + 
+  #  theme(axis.text.x = element_text(angle = 90)) + 
+    scale_fill_brewer(type = "qual", palette = "Dark2") +
+    coord_flip() + 
+    scale_x_reverse() +
+    labs(x = "Depth (m)", y = "Relative Abundance") +
+  geom_hline(yintercept = 0, size = 0.2) 
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(facet_grid)
+  }
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+
+cyclopoids <- subset_taxa(transform_sample_counts(ZHAN, function(x) x / sum(x) ), Order == "Cyclopoida")
+oiths <- subset_taxa(transform_sample_counts(ZHAN, function(x) x / sum(x) ), Family == "Oithonidae")
+
+
+#plot_bar(subset_taxa(ZHAN, Genus == "Eucalanus"), fill = "Species", x = "Net") + facet_grid(Diel~Cycle, scales = "free") + coord_flip()
+mycol <- brewer.pal(name="Set1", n = 8)[7]
+p <- plot_bar_width_double_oithona_fixed(oiths, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4, labeller=as_labeller(cyclenames)) + 
+  theme(strip.text = element_text(size = 7)) +  
+  theme(plot.title = element_text(size=7), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+p
+
+
+p_free <- plot_bar_width_double_oithona_free(oiths, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4, labeller=as_labeller(cyclenames), scales = "free_x") + 
+  theme(strip.text = element_text(size = 7)) +  
+  theme(plot.title = element_text(size=7), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+p_free
+
+oithona_18s <- p_free
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/Oithonids_relabundance.pdf", height = 4.5, width = 9)
+p_free
+dev.off()
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/Oithonids_relabundance.jpeg", height = 4.5, width = 9, unit = "in", quality = 100, res = 300)
+p_free
+dev.off()
+
+
+```
+
+
+```{r plot thaliaceans and oithonids }
+arrange <- ggarrange(thaliaceans_18S, oithona_18s, nrow = 2, ncol = 1, align = "hv")
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/Thaliaceans&Oithonids_relabundance.jpeg", height = 7, width = 9, unit = "in", quality = 100, res = 300)
+arrange
+dev.off()
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/Thaliaceans&Oithonids_relabundance.pdf", height = 7, width = 9)
+arrange
+dev.off()
+
+```
+

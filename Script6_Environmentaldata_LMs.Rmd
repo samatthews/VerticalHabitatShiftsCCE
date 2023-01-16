@@ -1,0 +1,957 @@
+---
+title: "Script6_Environmentaldata_LMs"
+output: html_document
+date: "2022-10-18"
+---
+Note: also run "Script4_Import_EnviroData.Rmd" before running this script 
+
+```{r load libraries}
+
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+#library(clustsig) not available anymore
+library(ggdendro)
+library(gridExtra)
+library(stringr)
+library(dendextend)
+library(Biostrings)
+library(insect)
+library(ape)
+library(seqinr)
+library(decontam)
+library(lmodel2)
+library(mgcv)
+library(goeveg)
+library(metagMisc)
+library(magrittr)
+library(ggpubr)
+library(RColorBrewer)
+library(readxl)
+library(rcompanion)
+library(car)
+library(nlme)
+library(lme4)
+library(MuMIn)
+library(reshape2)
+library(grid)
+
+```
+
+```{r load data}
+load("COIdataforASM.rdat")
+load("ZHANdataforASM.rdat")
+load("tables_bothmarkers_absentspeciesremoved_COIstopcodonsremoved_traitsadded_withDVM.Rdat")
+
+```
+
+
+```{r format COI data with MDO data}
+traitsandmdo <- merge(tax_table(COI), mdo_COI, by.x = "hash", by.y = "name")
+
+abundances <- data.frame(taxa_sums(COI), taxa_names(COI), taxa_sums(phyloseq_standardize_otu_abundance(COI, method = "pa"))) 
+colnames(abundances) <- c("abundance", "hash", "nsamples")
+
+traitsandmdo <- merge(traitsandmdo, abundances, by = "hash")
+traitsandmdo$MaxSize <- as.numeric(traitsandmdo$MaxSize)
+
+meandepthnight <- rowMeans(traitsandmdo[,c("cycle1N", "cycle2N", "cycle3N", "cycle4N")], na.rm = T)
+meandepthday <- rowMeans(traitsandmdo[,c("cycle1D", "cycle2D", "cycle3D", "cycle4D")], na.rm = T)
+#mdo_COI$classification[meandepth > 200] <- "mesopelagic"
+traitsandmdo$stratum <- NA
+traitsandmdo$stratum[meandepthnight > 200] <- "Mesopelagic" #first define based on night depth
+traitsandmdo$stratum[meandepthnight <= 200] <- "Epipelagic"
+traitsandmdo$stratum[meandepthday > 200] <- "Mesopelagic" #then replace with day depth since this is that traditional way to define (mesopelagic residents ascend during the night)
+traitsandmdo$stratum[meandepthday <= 200] <- "Epipelagic"
+
+
+#mdo_long <- mdo_COI[,c(1:10)] %>% tidyr::pivot_longer(names_to = "cycle", values_to = "mdo", cols = c("cycle1N", "cycle2N", "cycle3N", "cycle1D", "cycle2D", "cycle3D", "cycle4D", "cycle4N"))
+mdo_long_diet <- traitsandmdo[,c("hash", "cycle1N", "C1Nnsamples", "cycle2N", "C2Nnsamples",  "cycle3N", "C3Nnsamples", "cycle4N", "C4Nnsamples", "cycle1D", "C1Dnsamples", "cycle2D",  "C2Dnsamples", "cycle3D", "C3Dnsamples", "cycle4D", "C4Dnsamples", "Diet", "FeedingBehavior", "Spawning", "AsexualRepro", "Carbon", "stratum", "Subclass", "Genus", "abundance", "nsamples", "MaxSize")] %>% tidyr::pivot_longer(names_to = "cycle", values_to = "mdo", cols = c("cycle1N", "cycle2N",  "cycle3N", "cycle4N","cycle1D", "cycle2D",  "cycle3D", "cycle4D"))
+
+mdo_long_diet$cyclen <- strsplit(mdo_long_diet$cycle, split = "") %>% sapply(extract2, 6)
+mdo_long_diet$time <- strsplit(mdo_long_diet$cycle, split = "") %>% sapply(extract2, 7)
+mdo_foranova <- mdo_long_diet
+#mdo_foranova <- mdo_foranova[mdo_foranova$taxon == "Calanoida" | mdo_foranova$taxon == "Euphausiacea" | mdo_foranova$taxon == "Cnidaria" | mdo_foranova$taxon == "Halocyprida" | mdo_foranova$taxon == "Polychaeta",]
+mdo_foranova$chlorophyllmax <- NA
+mdo_foranova$chlorophyllmax[mdo_foranova$cyclen == 1] <- enviro_data$chlmax[enviro_data$cyclen == 1]
+mdo_foranova$chlorophyllmax[mdo_foranova$cyclen == 2] <- enviro_data$chlmax[enviro_data$cyclen == 2]
+mdo_foranova$chlorophyllmax[mdo_foranova$cyclen == 3] <- enviro_data$chlmax[enviro_data$cyclen == 3]
+mdo_foranova$chlorophyllmax[mdo_foranova$cyclen == 4] <- enviro_data$chlmax[enviro_data$cyclen == 4]
+mdo_foranova$oneperclight <- NA
+mdo_foranova$oneperclight[mdo_foranova$cyclen == 1] <- enviro_data$oneperclight[enviro_data$cyclen == 1]
+mdo_foranova$oneperclight[mdo_foranova$cyclen == 2] <- enviro_data$oneperclight[enviro_data$cyclen == 2]
+mdo_foranova$oneperclight[mdo_foranova$cyclen == 3] <- enviro_data$oneperclight[enviro_data$cyclen == 3]
+mdo_foranova$oneperclight[mdo_foranova$cyclen == 4] <- enviro_data$oneperclight[enviro_data$cyclen == 4]
+mdo_foranova$beamC100m <- NA
+mdo_foranova$beamC100m[mdo_foranova$cyclen == 1] <- enviro_data$beamC100m[enviro_data$cyclen == 1]
+mdo_foranova$beamC100m[mdo_foranova$cyclen == 2] <- enviro_data$beamC100m[enviro_data$cyclen == 2]
+mdo_foranova$beamC100m[mdo_foranova$cyclen == 3] <- enviro_data$beamC100m[enviro_data$cyclen == 3]
+mdo_foranova$beamC100m[mdo_foranova$cyclen == 4] <- enviro_data$beamC100m[enviro_data$cyclen == 4]
+
+mdo_foranova$distancefromshorekm <- NA
+mdo_foranova$distancefromshorekm[mdo_foranova$cyclen == 1] <- 272.20
+mdo_foranova$distancefromshorekm[mdo_foranova$cyclen == 2] <- 177.0
+mdo_foranova$distancefromshorekm[mdo_foranova$cyclen == 3] <- 57.25
+mdo_foranova$distancefromshorekm[mdo_foranova$cyclen == 4] <- 11.78
+
+mdo_foranova$thermocline<- NA
+mdo_foranova$thermocline[mdo_foranova$cyclen == 1] <- 100
+mdo_foranova$thermocline[mdo_foranova$cyclen == 2] <- 115
+mdo_foranova$thermocline[mdo_foranova$cyclen == 3] <- 75
+mdo_foranova$thermocline[mdo_foranova$cyclen == 4] <- 25
+
+mdo_foranova$n2<- NA
+mdo_foranova$n2[mdo_foranova$cyclen == 1] <- 15
+mdo_foranova$n2[mdo_foranova$cyclen == 2] <- 100
+mdo_foranova$n2[mdo_foranova$cyclen == 3] <- 45
+mdo_foranova$n2[mdo_foranova$cyclen == 4] <- 40
+
+mdo_foranova$oxy100<- NA
+mdo_foranova$oxy100[mdo_foranova$cyclen == 1] <- 225
+mdo_foranova$oxy100[mdo_foranova$cyclen == 2] <- 250
+mdo_foranova$oxy100[mdo_foranova$cyclen == 3] <- 200
+mdo_foranova$oxy100[mdo_foranova$cyclen == 4] <- 125
+
+mdo_foranova$particlemax<- NA
+mdo_foranova$particlemax[mdo_foranova$cyclen == 1] <- 70
+mdo_foranova$particlemax[mdo_foranova$cyclen == 2] <- 80
+mdo_foranova$particlemax[mdo_foranova$cyclen == 3] <- 20
+mdo_foranova$particlemax[mdo_foranova$cyclen == 4] <- 5
+
+mdo_foranova <- mdo_foranova[mdo_foranova$cyclen != 4,]
+
+#remove taxa without traits
+mdo_foranova$Diet[mdo_foranova$Diet %in% c("nd")] <- NA
+mdo_foranova$FeedingBehavior[mdo_foranova$FeedingBehavior %in% c("nd", "NA")] <- NA
+mdo_foranova$Spawning[mdo_foranova$Spawning %in% c("nd", "NA")] <- NA
+mdo_foranova$AsexualRepro[mdo_foranova$AsexualRepro %in% c("nd", "NA")] <- NA
+mdo_foranova$Carbon[mdo_foranova$Carbon %in% c("nd", "NA")] <- NA
+
+#manipulate some variables to make testing easier
+mdo_foranova$cyclenum <- as.numeric(mdo_foranova$cyclen)
+mdo_foranova$mdoplusone <- mdo_foranova$mdo+1
+mdo_foranova <- mdo_foranova[!is.na(mdo_foranova$mdo),]
+
+#save a copy for the future
+mdo_foranovastorage <- mdo_foranova
+
+#get rid of mean depths of occurence that are based on less than 3 samples
+#mdo_foranova <- mdo_foranova[!(mdo_foranova$cyclen == "1" & mdo_foranova$time == "N" & mdo_foranova$C1Nnsamples < 2),] #remove rows with data from cycle 1 night and appearing in less than 3 cycle 1 nighttime samples 
+#do the same for the rest of the tows
+#mdo_foranova <- mdo_foranova[!(mdo_foranova$cyclen == "1" & mdo_foranova$time == "D" & mdo_foranova$C1Dnsamples < 2),]
+#mdo_foranova <- mdo_foranova[!(mdo_foranova$cyclen == "2" & mdo_foranova$time == "N" & mdo_foranova$C2Nnsamples < 2),]
+#mdo_foranova <- mdo_foranova[!(mdo_foranova$cyclen == "2" & mdo_foranova$time == "D" & mdo_foranova$C2Dnsamples < 2),]
+#mdo_foranova <- mdo_foranova[!(mdo_foranova$cyclen == "3" & mdo_foranova$time == "N" & mdo_foranova$C3Nnsamples < 2),]
+#mdo_foranova <- mdo_foranova[!(mdo_foranova$cyclen == "3" & mdo_foranova$time == "D" & mdo_foranova$C3Dnsamples < 2),]
+
+
+ggplot(mdo_foranova) + 
+  geom_point(aes(x = cyclen, y = chlorophyllmax, color = "Depth of Chlorophyll Max")) + 
+  geom_point(aes(x = cyclen, y = beamC100m, color = "BeamC at 100 m")) + 
+  geom_point(aes(x=cyclen, y = oneperclight, color = "One Percent Light Level"))+ 
+  geom_point(aes(x=cyclen, y = thermocline, color = "Depth of Thermocline"))+ 
+  geom_point(aes(x=cyclen, y = n2, color = "Depth of Buoyancy Maximum"))+ 
+  geom_point(aes(x=cyclen, y = oxy100, color = "Depth of 100um Oxygen"))+ 
+  geom_point(aes(x=cyclen, y = particlemax, color = "Depth of Particle Maximum"))+ 
+  scale_y_reverse()
+
+mdo_foranova_fullcolumn <- mdo_foranova
+ggplot(mdo_foranova_fullcolumn)+ 
+  geom_jitter(aes(x=cyclenum, y = mdo, color = nsamples), width = 0.2) + 
+  geom_line(aes(x = cyclenum, y = mdo, group = hash), alpha = 0.2) +
+  scale_y_reverse() +
+  theme_bw() + 
+  facet_grid(stratum~time)
+```
+
+```{r COI test for differences in vertical distribution between cycles}
+my1aov <- aov(mdo~cyclen, data=mdo_foranova_fullcolumn[mdo_foranova_fullcolumn$time =="D",])
+Anova(my1aov, type=2)
+my2aov <- aov(mdo~cyclen, data=mdo_foranova_fullcolumn[mdo_foranova_fullcolumn$time =="N",])
+Anova(my2aov, type = 2)
+my3aov <- aov(mdo~cyclen+time, data=mdo_foranova_fullcolumn)
+Anova(my3aov, type=2)
+my4aov <- aov(mdo~cyclen, data=mdo_foranova_fullcolumn)
+Anova(my4aov, type=2)
+#test wehther there is differences in mean depth of occurence between cycles across all depth, within each otu and within each diel set 
+#pvalue < 0.01 always
+
+ggplot(mdo_foranova_fullcolumn)+ 
+  geom_jitter(aes(x=cyclenum, y = mdo, color = nsamples), width = 0.2) + 
+  geom_line(aes(x = cyclenum, y = mdo, group = hash), alpha = 0.2) +
+  scale_y_reverse() +
+  theme_bw() + 
+  facet_grid(stratum~time)
+
+
+# okay - is the linear model (treating each hash separately for each diel) better for distance offshore, one percent light level, cyclen, or chlorophyll
+#also thermocline, depth of N2 max, depth of oxycline, depth of POC max
+mod1 = lm(mdo ~ cyclenum + hash + time, data = mdo_foranova_fullcolumn)
+mod2 = lm(mdo ~ distancefromshorekm  + hash + time, data = mdo_foranova_fullcolumn)
+mod3 = lm(mdo ~ chlorophyllmax + hash + time, data = mdo_foranova_fullcolumn)
+mod4 = lm(mdo ~ oneperclight + hash + time, data = mdo_foranova_fullcolumn)
+mod5 = lm(mdo ~ thermocline + hash + time, data = mdo_foranova_fullcolumn)
+mod6 = lm(mdo ~ n2 + hash + time, data = mdo_foranova_fullcolumn)
+mod7 = lm(mdo ~ oxy100 + hash + time, data = mdo_foranova_fullcolumn)
+mod8 = lm(mdo ~ particlemax + hash + time, data = mdo_foranova_fullcolumn)
+
+coi400m <- model.sel(list(mod3, mod4, mod5, mod6, mod7, mod8))
+coi400m
+#compareLM(mod1, mod2, mod3)
+summary(mod4)
+summary(mod1)
+summary(mod5)
+
+## is this enough data to differentiate among these covariates? Seems unlikely....
+
+
+#somewhat better relationship for light penetration than for cycle, chlorophyll, or distance from shore 
+#this is difficult to see though because of the huge amount of scatter 
+
+ggplot(mdo_foranova_fullcolumn)+ 
+  geom_jitter(aes(x=oneperclight, y = mdo, color = nsamples), width = 5) + 
+  geom_line(aes(x = oneperclight, y = mdo, group = hash), alpha = 0.2) +
+  scale_y_reverse() +
+  theme_bw()  + 
+  xlab("Depth of the 1% light level (m)") + 
+  ylab("Mean Depth of Occurence") 
+
+ggplot(mdo_foranova_fullcolumn)+ 
+  geom_jitter(aes(x=oneperclight, y = mdo, color = cyclenum), width = 5) + 
+  geom_line(aes(x = oneperclight, y = mdo, group = hash), alpha = 0.2) +
+  scale_y_reverse() +
+  theme_bw()  + 
+  xlab("Depth of the 1% light level (m)") + 
+  ylab("Mean Depth of Occurence") 
+
+```
+
+
+```{r plot COI shifts in mdo}
+mdo_foranova <- mdo_foranova_fullcolumn[mdo_foranova_fullcolumn$nsamples > 2,]
+
+mdo_foranova$groupby <- paste(mdo_foranova$hash, mdo_foranova$time)
+mdo_foranova$townsamples <- NA
+mdo_foranova$townsamples[mdo_foranova$cyclenum == 1 & mdo_foranova$time == "N"] <- mdo_foranova$C1Nnsamples[mdo_foranova$cyclenum == 1 & mdo_foranova$time == "N"]
+mdo_foranova$townsamples[mdo_foranova$cyclenum == 2 & mdo_foranova$time == "N"] <- mdo_foranova$C2Nnsamples[mdo_foranova$cyclenum == 2 & mdo_foranova$time == "N"]
+mdo_foranova$townsamples[mdo_foranova$cyclenum == 3 & mdo_foranova$time == "N"] <- mdo_foranova$C3Nnsamples[mdo_foranova$cyclenum == 3 & mdo_foranova$time == "N"]
+mdo_foranova$townsamples[mdo_foranova$cyclenum == 1 & mdo_foranova$time == "D"] <- mdo_foranova$C1Dnsamples[mdo_foranova$cyclenum == 1 & mdo_foranova$time == "D"]
+mdo_foranova$townsamples[mdo_foranova$cyclenum == 2 & mdo_foranova$time == "D"] <- mdo_foranova$C2Dnsamples[mdo_foranova$cyclenum == 2 & mdo_foranova$time == "D"]
+mdo_foranova$townsamples[mdo_foranova$cyclenum == 3 & mdo_foranova$time == "D"] <- mdo_foranova$C3Dnsamples[mdo_foranova$cyclenum == 3 & mdo_foranova$time == "D"]
+mdo_foranova_sorted <- ## see: https://github.com/tidyverse/ggplot2/issues/3535 to sort so that you cna jitter points and lines ot match
+  mdo_foranova %>%
+  arrange(groupby, oneperclight, mdo)
+pd <- position_jitter(width = 4, height = 5, seed = 34)
+
+p_3cyc <- ggplot(mdo_foranova_sorted, aes(x=oneperclight, y = mdo, group = groupby))+  #color = townsamples
+  geom_point(position = pd, size = 1.1) + 
+  geom_line(position = pd, alpha = 0.2) +
+  scale_y_reverse(limits = c(350,0)) +
+  theme_bw() + 
+  xlab("Depth of the 1% Light Level (m)") + 
+  ylab("Mean Depth of Occurence (m)") +
+  geom_hline(yintercept = 0, color = "grey65")  +   scale_x_reverse() 
+#jittering doen't match if the axis is reverse
+
+p_3cyc <- ggplot(mdo_foranova_sorted, aes(x=oneperclight, y = mdo, group = groupby))+  #color = townsamples
+  geom_point(position = pd, size = 1.1) + 
+  geom_line(position = pd, alpha = 0.2) +
+  scale_y_reverse(limits = c(350,0)) +
+  theme_bw() + 
+  xlab(NULL) + 
+  ylab("Mean Depth of Occurence (m)") +
+  geom_hline(yintercept = 0, color = "grey65")  +  
+  scale_x_reverse() +
+  ggtitle("COI: Depth of 1% Light (m), 0-400m")
+#jittering doen't match if the axis is reverse
+
+p_3cyc_coi <- p_3cyc
+
+p_3cyc
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/MDOvsLight_COI.jpeg", height = 4.5, width = 6.8, unit = "in", quality = 100, res = 300)
+p_3cyc
+dev.off()
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/MDOvsLight_COI.pdf", height = 4.5, width = 6.8)
+p_3cyc
+dev.off()
+
+
+ggplot(mdo_foranova_sorted, aes(x=oneperclight, y = mdo, group = groupby))+  #color = townsamples
+  geom_point(position = position_jitter(width = 4, height = 10, seed = 34)) + 
+  geom_line(position = position_jitter(width = 4, height = 10, seed = 34), alpha = 0.2) +
+  scale_y_reverse(limits = c(350,0)) +
+  theme_bw() + 
+  xlab("Depth of 1% Light Level (m)") + 
+  ylab("Mean Depth of Occurence (m)") +
+  geom_hline(yintercept = 0, color = "grey65") 
+
+```
+
+
+
+```{r COI epipelagic test (needs 1a run first)}
+traitsandmdoepi <- merge(tax_table(COI), mdo_COI_epi, by.x = "hash", by.y = "name")
+
+abundances <- data.frame(taxa_sums(COI), taxa_names(COI), taxa_sums(phyloseq_standardize_otu_abundance(COI, method = "pa"))) 
+colnames(abundances) <- c("abundance", "hash", "nsamples")
+
+traitsandmdoepi <- merge(traitsandmdoepi, abundances, by = "hash")
+traitsandmdoepi$MaxSize <- as.numeric(traitsandmdoepi$MaxSize)
+
+meandepthnight <- rowMeans(traitsandmdoepi[,c("cycle1N", "cycle2N", "cycle3N", "cycle4N")], na.rm = T)
+meandepthday <- rowMeans(traitsandmdoepi[,c("cycle1D", "cycle2D", "cycle3D", "cycle4D")], na.rm = T)
+#mdo_COI$classification[meandepth > 200] <- "mesopelagic"
+traitsandmdoepi$stratum <- NA
+traitsandmdoepi$stratum[meandepthnight > 200] <- "Mesopelagic" #first define based on night depth
+traitsandmdoepi$stratum[meandepthnight <= 200] <- "Epipelagic"
+traitsandmdoepi$stratum[meandepthday > 200] <- "Mesopelagic" #then replace with day depth since this is that traditional way to define (mesopelagic residents ascend during the night)
+traitsandmdoepi$stratum[meandepthday <= 200] <- "Epipelagic"
+
+
+mdoepi_long_diet <- traitsandmdoepi[,c("hash", "cycle1N", "C1Nnsamples", "cycle2N", "C2Nnsamples",  "cycle3N", "C3Nnsamples", "cycle4N", "C4Nnsamples", "cycle1D", "C1Dnsamples", "cycle2D",  "C2Dnsamples", "cycle3D", "C3Dnsamples", "cycle4D", "C4Dnsamples", "Diet", "FeedingBehavior", "Spawning", "AsexualRepro", "Carbon", "stratum", "Subclass", "Genus", "abundance", "nsamples", "MaxSize")] %>% tidyr::pivot_longer(names_to = "cycle", values_to = "mdo", cols = c("cycle1N", "cycle2N",  "cycle3N", "cycle4N","cycle1D", "cycle2D",  "cycle3D", "cycle4D"))
+
+mdoepi_long_diet$cyclen <- strsplit(mdoepi_long_diet$cycle, split = "") %>% sapply(extract2, 6)
+mdoepi_long_diet$time <- strsplit(mdoepi_long_diet$cycle, split = "") %>% sapply(extract2, 7)
+mdoepi_foranova <- mdoepi_long_diet
+#mdo_foranova <- mdo_foranova[mdo_foranova$taxon == "Calanoida" | mdo_foranova$taxon == "Euphausiacea" | mdo_foranova$taxon == "Cnidaria" | mdo_foranova$taxon == "Halocyprida" | mdo_foranova$taxon == "Polychaeta",]
+mdoepi_foranova$chlorophyllmax <- NA
+mdoepi_foranova$chlorophyllmax[mdoepi_foranova$cyclen == 1] <- enviro_data$chlmax[enviro_data$cyclen == 1]
+mdoepi_foranova$chlorophyllmax[mdoepi_foranova$cyclen == 2] <- enviro_data$chlmax[enviro_data$cyclen == 2]
+mdoepi_foranova$chlorophyllmax[mdoepi_foranova$cyclen == 3] <- enviro_data$chlmax[enviro_data$cyclen == 3]
+mdoepi_foranova$chlorophyllmax[mdoepi_foranova$cyclen == 4] <- enviro_data$chlmax[enviro_data$cyclen == 4]
+mdoepi_foranova$oneperclight <- NA
+mdoepi_foranova$oneperclight[mdoepi_foranova$cyclen == 1] <- enviro_data$oneperclight[enviro_data$cyclen == 1]
+mdoepi_foranova$oneperclight[mdoepi_foranova$cyclen == 2] <- enviro_data$oneperclight[enviro_data$cyclen == 2]
+mdoepi_foranova$oneperclight[mdoepi_foranova$cyclen == 3] <- enviro_data$oneperclight[enviro_data$cyclen == 3]
+mdoepi_foranova$oneperclight[mdoepi_foranova$cyclen == 4] <- enviro_data$oneperclight[enviro_data$cyclen == 4]
+mdoepi_foranova$beamC100m <- NA
+mdoepi_foranova$beamC100m[mdoepi_foranova$cyclen == 1] <- enviro_data$beamC100m[enviro_data$cyclen == 1]
+mdoepi_foranova$beamC100m[mdoepi_foranova$cyclen == 2] <- enviro_data$beamC100m[enviro_data$cyclen == 2]
+mdoepi_foranova$beamC100m[mdoepi_foranova$cyclen == 3] <- enviro_data$beamC100m[enviro_data$cyclen == 3]
+mdoepi_foranova$beamC100m[mdoepi_foranova$cyclen == 4] <- enviro_data$beamC100m[enviro_data$cyclen == 4]
+mdoepi_foranova$distancefromshorekm <- NA
+mdoepi_foranova$distancefromshorekm[mdoepi_foranova$cyclen == 1] <- 272.20
+mdoepi_foranova$distancefromshorekm[mdoepi_foranova$cyclen == 2] <- 177.0
+mdoepi_foranova$distancefromshorekm[mdoepi_foranova$cyclen == 3] <- 57.25
+mdoepi_foranova$distancefromshorekm[mdoepi_foranova$cyclen == 4] <- 11.78
+
+
+mdoepi_foranova$thermocline<- NA
+mdoepi_foranova$thermocline[mdoepi_foranova$cyclen == 1] <- 100
+mdoepi_foranova$thermocline[mdoepi_foranova$cyclen == 2] <- 115
+mdoepi_foranova$thermocline[mdoepi_foranova$cyclen == 3] <- 75
+mdoepi_foranova$thermocline[mdoepi_foranova$cyclen == 4] <- 25
+
+mdoepi_foranova$n2<- NA
+mdoepi_foranova$n2[mdoepi_foranova$cyclen == 1] <- 15
+mdoepi_foranova$n2[mdoepi_foranova$cyclen == 2] <- 100
+mdoepi_foranova$n2[mdoepi_foranova$cyclen == 3] <- 45
+mdoepi_foranova$n2[mdoepi_foranova$cyclen == 4] <- 40
+
+mdoepi_foranova$oxy100<- NA
+mdoepi_foranova$oxy100[mdoepi_foranova$cyclen == 1] <- 225
+mdoepi_foranova$oxy100[mdoepi_foranova$cyclen == 2] <- 250
+mdoepi_foranova$oxy100[mdoepi_foranova$cyclen == 3] <- 200
+mdoepi_foranova$oxy100[mdoepi_foranova$cyclen == 4] <- 125
+
+mdoepi_foranova$particlemax<- NA
+mdoepi_foranova$particlemax[mdoepi_foranova$cyclen == 1] <- 70
+mdoepi_foranova$particlemax[mdoepi_foranova$cyclen == 2] <- 80
+mdoepi_foranova$particlemax[mdoepi_foranova$cyclen == 3] <- 20
+mdoepi_foranova$particlemax[mdoepi_foranova$cyclen == 4] <- 5
+
+
+#remove taxa without traits
+mdoepi_foranova$Diet[mdoepi_foranova$Diet %in% c("nd")] <- NA
+mdoepi_foranova$FeedingBehavior[mdoepi_foranova$FeedingBehavior %in% c("nd", "NA")] <- NA
+mdoepi_foranova$Spawning[mdoepi_foranova$Spawning %in% c("nd", "NA")] <- NA
+mdoepi_foranova$AsexualRepro[mdoepi_foranova$AsexualRepro %in% c("nd", "NA")] <- NA
+mdoepi_foranova$Carbon[mdoepi_foranova$Carbon %in% c("nd", "NA")] <- NA
+
+#manipulate some variables to make testing easier
+mdoepi_foranova$cyclenum <- as.numeric(mdoepi_foranova$cyclen)
+mdoepi_foranova$mdoplusone <- mdoepi_foranova$mdo+1
+mdoepi_foranova <- mdoepi_foranova[!is.na(mdoepi_foranova$mdo),]
+
+#save a copy for the future
+mdo_foranovastorage <- mdoepi_foranova
+
+
+ggplot(mdoepi_foranova) + 
+  geom_point(aes(x = cyclen, y = chlorophyllmax, color = "Depth of Chlorophyll Max")) + 
+  geom_point(aes(x = cyclen, y = beamC100m, color = "BeamC at 100 m")) + 
+  geom_point(aes(x=cyclen, y = oneperclight, color = "One Percent Light Level"))+ 
+  geom_point(aes(x=cyclen, y = distancefromshorekm, color = "Distance From Shore"))+ 
+  scale_y_reverse()
+
+mdoepi_foranova_fullcolumn <- mdoepi_foranova
+ggplot(mdoepi_foranova_fullcolumn)+ 
+  geom_jitter(aes(x=cyclenum, y = mdo, color = nsamples), width = 0.2) + 
+  geom_line(aes(x = cyclenum, y = mdo, group = hash), alpha = 0.2) +
+  scale_y_reverse() +
+  theme_bw() + 
+  facet_grid(stratum~time)
+
+
+my1aov <- aov(mdo~cyclen, data=mdoepi_foranova_fullcolumn[mdoepi_foranova_fullcolumn$time =="D",])
+Anova(my1aov, type=2)
+my2aov <- aov(mdo~cyclen, data=mdoepi_foranova_fullcolumn[mdoepi_foranova_fullcolumn$time =="N",])
+Anova(my2aov, type = 2)
+my3aov <- aov(mdo~cyclen+time, data=mdoepi_foranova_fullcolumn)
+Anova(my3aov, type=2)
+my4aov <- aov(mdo~cyclen, data=mdoepi_foranova_fullcolumn)
+Anova(my4aov, type=2)
+#test wehther there is differences in mean depth of occurence between cycles across all depth, within each otu and within each diel set 
+#pvalue < 0.01 always
+
+ggplot(mdoepi_foranova_fullcolumn)+ 
+  geom_jitter(aes(x=cyclenum, y = mdo, color = nsamples), width = 0.2) + 
+  geom_line(aes(x = cyclenum, y = mdo, group = hash), alpha = 0.2) +
+  scale_y_reverse() +
+  theme_bw() + 
+  facet_grid(stratum~time)
+
+
+# okay - is the linear model (treating each hash separately for each diel) better for distance offshore, one percent light level, cyclen, or chlorophyll
+mod1 = lm(mdo ~ cyclenum + hash + time, data = mdoepi_foranova_fullcolumn)
+mod2 = lm(mdo ~ distancefromshorekm  + hash + time, data = mdoepi_foranova_fullcolumn)
+mod3 = lm(mdo ~ chlorophyllmax + hash + time, data = mdoepi_foranova_fullcolumn)
+mod4 = lm(mdo ~ oneperclight + hash + time, data = mdoepi_foranova_fullcolumn)
+mod5 = lm(mdo ~ thermocline + hash + time, data = mdoepi_foranova_fullcolumn)
+mod6 = lm(mdo ~ n2 + hash + time, data = mdoepi_foranova_fullcolumn)
+mod7 = lm(mdo ~ oxy100 + hash + time, data = mdoepi_foranova_fullcolumn)
+mod8 = lm(mdo ~ particlemax + hash + time, data = mdoepi_foranova_fullcolumn)
+coi200m <- model.sel(list(mod3, mod4, mod5, mod6, mod7, mod8))
+coi200m
+#compareLM(mod1, mod2, mod3)
+#summary(mod3)
+#summary(mod4)
+```
+
+```{r}
+mdoepi_forplot <- mdoepi_foranova_fullcolumn[mdoepi_foranova_fullcolumn$nsamples > 2,]
+
+mdoepi_forplot$groupby <- paste(mdoepi_forplot$hash, mdoepi_forplot$time)
+mdoepi_forplot$townsamples <- NA
+mdoepi_forplot$townsamples[mdoepi_forplot$cyclenum == 1 & mdoepi_forplot$time == "N"] <- mdoepi_forplot$C1Nnsamples[mdoepi_forplot$cyclenum == 1 & mdoepi_forplot$time == "N"]
+mdoepi_forplot$townsamples[mdoepi_forplot$cyclenum == 2 & mdoepi_forplot$time == "N"] <- mdoepi_forplot$C2Nnsamples[mdoepi_forplot$cyclenum == 2 & mdoepi_forplot$time == "N"]
+mdoepi_forplot$townsamples[mdoepi_forplot$cyclenum == 3 & mdoepi_forplot$time == "N"] <- mdoepi_forplot$C3Nnsamples[mdoepi_forplot$cyclenum == 3 & mdoepi_forplot$time == "N"]
+mdoepi_forplot$townsamples[mdoepi_forplot$cyclenum == 1 & mdoepi_forplot$time == "D"] <- mdoepi_forplot$C1Dnsamples[mdoepi_forplot$cyclenum == 1 & mdoepi_forplot$time == "D"]
+mdoepi_forplot$townsamples[mdoepi_forplot$cyclenum == 2 & mdoepi_forplot$time == "D"] <- mdoepi_forplot$C2Dnsamples[mdoepi_forplot$cyclenum == 2 & mdoepi_forplot$time == "D"]
+mdoepi_forplot$townsamples[mdoepi_forplot$cyclenum == 3 & mdoepi_forplot$time == "D"] <- mdoepi_forplot$C3Dnsamples[mdoepi_forplot$cyclenum == 3 & mdoepi_forplot$time == "D"]
+mdo_foranova_sorted <- ## see: https://github.com/tidyverse/ggplot2/issues/3535 to sort so that you cna jitter points and lines ot match
+  mdoepi_forplot %>%
+  arrange(groupby, oneperclight, mdo)
+p_epi <- ggplot(mdo_foranova_sorted, aes(x=oneperclight, y = mdo, group = groupby))+  #color = townsamples
+  geom_point(position = position_jitter(width = 4, height = 5, seed = 34), size = 1.1) + 
+  geom_line(position = position_jitter(width = 4, height = 5, seed = 34), alpha = 0.2) +
+  scale_y_reverse(limits = c(200,0)) +
+  theme_bw() + 
+  xlab(NULL) + 
+  ylab("Mean Depth of Occurence (m)") +
+  geom_hline(yintercept = 0, color = "grey65") + 
+  scale_x_reverse() +
+    ggtitle("COI: Depth of 1% Light (m), 0-200m")
+
+
+p_epi_coi <- p_epi
+
+p_epi
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/MDOvsLightEPI_COI.jpeg", height = 4.5, width = 6.8, unit = "in", quality = 100, res = 300)
+p_epi
+dev.off()
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/MDOvsLightEPI_COI.pdf", height = 4.5, width = 6.8)
+p_epi
+dev.off()
+
+
+ggplot(mdo_foranova_sorted, aes(x=oneperclight, y = mdo, group = groupby))+  #color = townsamples
+  geom_point(position = position_jitter(width = 4, height = 10, seed = 34)) + 
+  geom_line(position = position_jitter(width = 4, height = 10, seed = 34), alpha = 0.2) +
+  scale_y_reverse(limits = c(200,0)) +
+  theme_bw() + 
+  xlab("Depth of 1% Light Level (m)") + 
+  ylab("Mean Depth of Occurence (m)") +
+  geom_hline(yintercept = 0, color = "grey65") 
+
+```
+
+
+```{r}
+arrangedlight <- ggarrange(p_3cyc + rremove("xlab") + rremove("ylab") , p_epi + rremove("xlab") + rremove("ylab"), nrow = 2, ncol =1, align = "hv", labels = "auto", vjust = 1) #+ rremove("xlab") + rremove("ylab")
+arrangedlight <- annotate_figure(arrangedlight, left = textGrob("Mean depth of occurence (m)", rot = 90, vjust = 1),
+                    bottom = textGrob("Depth of the 1% light level (m)"))
+arrangedlight
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/MDOvsLightBOTH_COI.jpeg", height = 4.5, width = 6.8, unit = "in", quality = 100, res = 300)
+arrangedlight
+dev.off()
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/MDOvsLightBOTH_COI.pdf", height = 4.5, width = 6.8)
+arrangedlight
+dev.off()
+
+```
+
+
+#### DO IT ALL AGAIN FOR 18S 
+
+```{r format 18S data with MDO data}
+traitsandmdo <- merge(tax_table(ZHAN), mdo_ZHAN, by.x = "hash", by.y = "name")
+
+abundances <- data.frame(taxa_sums(ZHAN), taxa_names(ZHAN), taxa_sums(phyloseq_standardize_otu_abundance(ZHAN, method = "pa"))) 
+colnames(abundances) <- c("abundance", "hash", "nsamples")
+
+traitsandmdo <- merge(traitsandmdo, abundances, by = "hash")
+traitsandmdo$MaxSize <- as.numeric(traitsandmdo$MaxSize)
+
+meandepthnight <- rowMeans(traitsandmdo[,c("cycle1N", "cycle2N", "cycle3N", "cycle4N")], na.rm = T)
+meandepthday <- rowMeans(traitsandmdo[,c("cycle1D", "cycle2D", "cycle3D", "cycle4D")], na.rm = T)
+#mdo_COI$classification[meandepth > 200] <- "mesopelagic"
+traitsandmdo$stratum <- NA
+traitsandmdo$stratum[meandepthnight > 200] <- "Mesopelagic" #first define based on night depth
+traitsandmdo$stratum[meandepthnight <= 200] <- "Epipelagic"
+traitsandmdo$stratum[meandepthday > 200] <- "Mesopelagic" #then replace with day depth since this is that traditional way to define (mesopelagic residents ascend during the night)
+traitsandmdo$stratum[meandepthday <= 200] <- "Epipelagic"
+
+
+#mdo_long <- mdo_COI[,c(1:10)] %>% tidyr::pivot_longer(names_to = "cycle", values_to = "mdo", cols = c("cycle1N", "cycle2N", "cycle3N", "cycle1D", "cycle2D", "cycle3D", "cycle4D", "cycle4N"))
+mdo_long_diet <- traitsandmdo[,c("hash", "cycle1N", "C1Nnsamples", "cycle2N", "C2Nnsamples",  "cycle3N", "C3Nnsamples", "cycle4N", "C4Nnsamples", "cycle1D", "C1Dnsamples", "cycle2D",  "C2Dnsamples", "cycle3D", "C3Dnsamples", "cycle4D", "C4Dnsamples", "Diet", "FeedingBehavior", "Spawning", "AsexualRepro", "Carbon", "stratum", "Subclass", "Genus", "abundance", "nsamples", "MaxSize")] %>% tidyr::pivot_longer(names_to = "cycle", values_to = "mdo", cols = c("cycle1N", "cycle2N",  "cycle3N", "cycle4N","cycle1D", "cycle2D",  "cycle3D", "cycle4D"))
+
+mdo_long_diet$cyclen <- strsplit(mdo_long_diet$cycle, split = "") %>% sapply(extract2, 6)
+mdo_long_diet$time <- strsplit(mdo_long_diet$cycle, split = "") %>% sapply(extract2, 7)
+mdo_foranova <- mdo_long_diet
+#mdo_foranova <- mdo_foranova[mdo_foranova$taxon == "Calanoida" | mdo_foranova$taxon == "Euphausiacea" | mdo_foranova$taxon == "Cnidaria" | mdo_foranova$taxon == "Halocyprida" | mdo_foranova$taxon == "Polychaeta",]
+mdo_foranova$chlorophyllmax <- NA
+mdo_foranova$chlorophyllmax[mdo_foranova$cyclen == 1] <- enviro_data$chlmax[enviro_data$cyclen == 1]
+mdo_foranova$chlorophyllmax[mdo_foranova$cyclen == 2] <- enviro_data$chlmax[enviro_data$cyclen == 2]
+mdo_foranova$chlorophyllmax[mdo_foranova$cyclen == 3] <- enviro_data$chlmax[enviro_data$cyclen == 3]
+mdo_foranova$chlorophyllmax[mdo_foranova$cyclen == 4] <- enviro_data$chlmax[enviro_data$cyclen == 4]
+mdo_foranova$oneperclight <- NA
+mdo_foranova$oneperclight[mdo_foranova$cyclen == 1] <- enviro_data$oneperclight[enviro_data$cyclen == 1]
+mdo_foranova$oneperclight[mdo_foranova$cyclen == 2] <- enviro_data$oneperclight[enviro_data$cyclen == 2]
+mdo_foranova$oneperclight[mdo_foranova$cyclen == 3] <- enviro_data$oneperclight[enviro_data$cyclen == 3]
+mdo_foranova$oneperclight[mdo_foranova$cyclen == 4] <- enviro_data$oneperclight[enviro_data$cyclen == 4]
+mdo_foranova$beamC100m <- NA
+mdo_foranova$beamC100m[mdo_foranova$cyclen == 1] <- enviro_data$beamC100m[enviro_data$cyclen == 1]
+mdo_foranova$beamC100m[mdo_foranova$cyclen == 2] <- enviro_data$beamC100m[enviro_data$cyclen == 2]
+mdo_foranova$beamC100m[mdo_foranova$cyclen == 3] <- enviro_data$beamC100m[enviro_data$cyclen == 3]
+mdo_foranova$beamC100m[mdo_foranova$cyclen == 4] <- enviro_data$beamC100m[enviro_data$cyclen == 4]
+mdo_foranova$distancefromshorekm <- NA
+mdo_foranova$distancefromshorekm[mdo_foranova$cyclen == 1] <- 272.20
+mdo_foranova$distancefromshorekm[mdo_foranova$cyclen == 2] <- 177.0
+mdo_foranova$distancefromshorekm[mdo_foranova$cyclen == 3] <- 57.25
+mdo_foranova$distancefromshorekm[mdo_foranova$cyclen == 4] <- 11.78
+
+mdo_foranova$thermocline<- NA
+mdo_foranova$thermocline[mdo_foranova$cyclen == 1] <- 100
+mdo_foranova$thermocline[mdo_foranova$cyclen == 2] <- 115
+mdo_foranova$thermocline[mdo_foranova$cyclen == 3] <- 75
+mdo_foranova$thermocline[mdo_foranova$cyclen == 4] <- 25
+
+mdo_foranova$n2<- NA
+mdo_foranova$n2[mdo_foranova$cyclen == 1] <- 15
+mdo_foranova$n2[mdo_foranova$cyclen == 2] <- 100
+mdo_foranova$n2[mdo_foranova$cyclen == 3] <- 45
+mdo_foranova$n2[mdo_foranova$cyclen == 4] <- 40
+
+mdo_foranova$oxy100<- NA
+mdo_foranova$oxy100[mdo_foranova$cyclen == 1] <- 225
+mdo_foranova$oxy100[mdo_foranova$cyclen == 2] <- 250
+mdo_foranova$oxy100[mdo_foranova$cyclen == 3] <- 200
+mdo_foranova$oxy100[mdo_foranova$cyclen == 4] <- 125
+
+mdo_foranova$particlemax<- NA
+mdo_foranova$particlemax[mdo_foranova$cyclen == 1] <- 70
+mdo_foranova$particlemax[mdo_foranova$cyclen == 2] <- 80
+mdo_foranova$particlemax[mdo_foranova$cyclen == 3] <- 20
+mdo_foranova$particlemax[mdo_foranova$cyclen == 4] <- 5
+
+mdo_foranova <- mdo_foranova[mdo_foranova$cyclen != 4,]
+
+#remove taxa without traits
+mdo_foranova$Diet[mdo_foranova$Diet %in% c("nd")] <- NA
+mdo_foranova$FeedingBehavior[mdo_foranova$FeedingBehavior %in% c("nd", "NA")] <- NA
+mdo_foranova$Spawning[mdo_foranova$Spawning %in% c("nd", "NA")] <- NA
+mdo_foranova$AsexualRepro[mdo_foranova$AsexualRepro %in% c("nd", "NA")] <- NA
+mdo_foranova$Carbon[mdo_foranova$Carbon %in% c("nd", "NA")] <- NA
+
+#manipulate some variables to make testing easier
+mdo_foranova$cyclenum <- as.numeric(mdo_foranova$cyclen)
+mdo_foranova$mdoplusone <- mdo_foranova$mdo+1
+mdo_foranova <- mdo_foranova[!is.na(mdo_foranova$mdo),]
+
+#save a copy for the future
+mdo_foranovastorage <- mdo_foranova
+
+#get rid of mean depths of occurence that are based on less than 3 samples
+#mdo_foranova <- mdo_foranova[!(mdo_foranova$cyclen == "1" & mdo_foranova$time == "N" & mdo_foranova$C1Nnsamples < 2),] #remove rows with data from cycle 1 night and appearing in less than 3 cycle 1 nighttime samples 
+#do the same for the rest of the tows
+#mdo_foranova <- mdo_foranova[!(mdo_foranova$cyclen == "1" & mdo_foranova$time == "D" & mdo_foranova$C1Dnsamples < 2),]
+#mdo_foranova <- mdo_foranova[!(mdo_foranova$cyclen == "2" & mdo_foranova$time == "N" & mdo_foranova$C2Nnsamples < 2),]
+#mdo_foranova <- mdo_foranova[!(mdo_foranova$cyclen == "2" & mdo_foranova$time == "D" & mdo_foranova$C2Dnsamples < 2),]
+#mdo_foranova <- mdo_foranova[!(mdo_foranova$cyclen == "3" & mdo_foranova$time == "N" & mdo_foranova$C3Nnsamples < 2),]
+#mdo_foranova <- mdo_foranova[!(mdo_foranova$cyclen == "3" & mdo_foranova$time == "D" & mdo_foranova$C3Dnsamples < 2),]
+
+
+ggplot(mdo_foranova) + 
+  geom_point(aes(x = cyclen, y = chlorophyllmax, color = "Depth of Chlorophyll Max")) + 
+  geom_point(aes(x = cyclen, y = beamC100m, color = "BeamC at 100 m")) + 
+  geom_point(aes(x=cyclen, y = oneperclight, color = "One Percent Light Level"))+ 
+  geom_point(aes(x=cyclen, y = distancefromshorekm, color = "Distance From Shore"))+ 
+  scale_y_reverse()
+
+mdo_foranova_fullcolumn <- mdo_foranova
+ggplot(mdo_foranova_fullcolumn)+ 
+  geom_jitter(aes(x=cyclenum, y = mdo, color = nsamples), width = 0.2) + 
+  geom_line(aes(x = cyclenum, y = mdo, group = hash), alpha = 0.2) +
+  scale_y_reverse() +
+  theme_bw() + 
+  facet_grid(stratum~time)
+```
+
+```{r 18S test for differences in vertical distribution between cycles}
+my1aov <- aov(mdo~cyclen, data=mdo_foranova_fullcolumn[mdo_foranova_fullcolumn$time =="D",])
+Anova(my1aov, type=2)
+my2aov <- aov(mdo~cyclen, data=mdo_foranova_fullcolumn[mdo_foranova_fullcolumn$time =="N",])
+Anova(my2aov, type = 2)
+my3aov <- aov(mdo~cyclen+time, data=mdo_foranova_fullcolumn)
+Anova(my3aov, type=2)
+my4aov <- aov(mdo~cyclen, data=mdo_foranova_fullcolumn)
+Anova(my4aov, type=2)
+#test wehther there is differences in mean depth of occurence between cycles across all depth, within each otu and within each diel set 
+#pvalue < 0.01 always
+
+ggplot(mdo_foranova_fullcolumn)+ 
+  geom_jitter(aes(x=cyclenum, y = mdo, color = nsamples), width = 0.2) + 
+  geom_line(aes(x = cyclenum, y = mdo, group = hash), alpha = 0.2) +
+  scale_y_reverse() +
+  theme_bw() + 
+  facet_grid(stratum~time)
+
+
+# okay - is the linear model (treating each hash separately for each diel) better for distance offshore, one percent light level, cyclen, or chlorophyll
+mod1 = lm(mdo ~ cyclenum + hash + time, data = mdo_foranova_fullcolumn)
+mod2 = lm(mdo ~ distancefromshorekm  + hash + time, data = mdo_foranova_fullcolumn)
+mod3 = lm(mdo ~ chlorophyllmax + hash + time, data = mdo_foranova_fullcolumn)
+mod4 = lm(mdo ~ oneperclight + hash + time, data = mdo_foranova_fullcolumn)
+mod5 = lm(mdo ~ thermocline + hash + time, data = mdo_foranova_fullcolumn)
+mod6 = lm(mdo ~ n2  + hash + time, data = mdo_foranova_fullcolumn)
+mod7 = lm(mdo ~ oxy100 + hash + time, data = mdo_foranova_fullcolumn)
+mod8 = lm(mdo ~ particlemax + hash + time, data = mdo_foranova_fullcolumn)
+zhan400m <- model.sel(list(mod3, mod4, mod5, mod6, mod7, mod8))
+zhan400m
+#compareLM(mod1, mod2, mod3)
+summary(mod3)
+summary(mod4)
+
+## is this enough data to differentiate among these covariates? Seems unlikely....
+
+
+#somewhat better relationship for light penetration than for cycle, chlorophyll, or distance from shore 
+#this is difficult to see though because of the huge amount of scatter 
+
+ggplot(mdo_foranova_fullcolumn)+ 
+  geom_jitter(aes(x=oneperclight, y = mdo, color = nsamples), width = 5) + 
+  geom_line(aes(x = oneperclight, y = mdo, group = hash), alpha = 0.2) +
+  scale_y_reverse() +
+  theme_bw()  + 
+  xlab("Depth of the 1% light level (m)") + 
+  ylab("Mean Depth of Occurence") 
+
+ggplot(mdo_foranova_fullcolumn)+ 
+  geom_jitter(aes(x=chlorophyllmax, y = mdo, color = cyclenum), width = 5) + 
+  geom_line(aes(x = chlorophyllmax, y = mdo, group = hash), alpha = 0.2) +
+  scale_y_reverse() +
+  theme_bw()  + 
+  xlab("Depth of the chlorophyll maximum") + 
+  ylab("Mean Depth of Occurence") 
+
+```
+
+
+```{r plot 18S shifts in mdo}
+mdo_foranova <- mdo_foranova_fullcolumn[mdo_foranova_fullcolumn$nsamples > 2,]
+
+mdo_foranova$groupby <- paste(mdo_foranova$hash, mdo_foranova$time)
+mdo_foranova$townsamples <- NA
+mdo_foranova$townsamples[mdo_foranova$cyclenum == 1 & mdo_foranova$time == "N"] <- mdo_foranova$C1Nnsamples[mdo_foranova$cyclenum == 1 & mdo_foranova$time == "N"]
+mdo_foranova$townsamples[mdo_foranova$cyclenum == 2 & mdo_foranova$time == "N"] <- mdo_foranova$C2Nnsamples[mdo_foranova$cyclenum == 2 & mdo_foranova$time == "N"]
+mdo_foranova$townsamples[mdo_foranova$cyclenum == 3 & mdo_foranova$time == "N"] <- mdo_foranova$C3Nnsamples[mdo_foranova$cyclenum == 3 & mdo_foranova$time == "N"]
+mdo_foranova$townsamples[mdo_foranova$cyclenum == 1 & mdo_foranova$time == "D"] <- mdo_foranova$C1Dnsamples[mdo_foranova$cyclenum == 1 & mdo_foranova$time == "D"]
+mdo_foranova$townsamples[mdo_foranova$cyclenum == 2 & mdo_foranova$time == "D"] <- mdo_foranova$C2Dnsamples[mdo_foranova$cyclenum == 2 & mdo_foranova$time == "D"]
+mdo_foranova$townsamples[mdo_foranova$cyclenum == 3 & mdo_foranova$time == "D"] <- mdo_foranova$C3Dnsamples[mdo_foranova$cyclenum == 3 & mdo_foranova$time == "D"]
+mdo_foranova_sorted <- ## see: https://github.com/tidyverse/ggplot2/issues/3535 to sort so that you cna jitter points and lines ot match
+  mdo_foranova %>%
+  arrange(groupby, n2, mdo)
+pd <- position_jitter(width = 4, height = 5, seed = 34)
+
+p_3cyc <- ggplot(mdo_foranova_sorted, aes(x=n2, y = mdo, group = groupby))+  #color = townsamples
+  geom_point(position = pd, size = 1.1) + 
+  geom_line(position = pd, alpha = 0.2) +
+  scale_y_reverse(limits = c(350,0)) +
+  theme_bw() + 
+  xlab(NULL) + 
+  ylab("Mean Depth of Occurence (m)") +
+  geom_hline(yintercept = 0, color = "grey65")  +   
+  scale_x_reverse() +
+  ggtitle("18S: Depth of Pycnocline (m), 0-400m")
+
+#jittering doen't match if the axis is reverse
+
+p_3cyc_18S <- p_3cyc
+p_3cyc
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/MDOvsLight_18S.jpeg", height = 4.5, width = 6.8, unit = "in", quality = 100, res = 300)
+p_3cyc
+dev.off()
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/MDOvsLight_18S.pdf", height = 4.5, width = 6.8)
+p_3cyc
+dev.off()
+
+
+ggplot(mdo_foranova_sorted, aes(x=oneperclight, y = mdo, group = groupby))+  #color = townsamples
+  geom_point(position = position_jitter(width = 4, height = 10, seed = 34)) + 
+  geom_line(position = position_jitter(width = 4, height = 10, seed = 34), alpha = 0.2) +
+  scale_y_reverse(limits = c(350,0)) +
+  theme_bw() + 
+  xlab("Depth of 1% Light Level (m)") + 
+  ylab("Mean Depth of Occurence (m)") +
+  geom_hline(yintercept = 0, color = "grey65") 
+
+```
+
+
+
+```{r 18S epipelagic test }
+traitsandmdoepi <- merge(tax_table(ZHAN), mdo_ZHAN_epi, by.x = "hash", by.y = "name")
+
+abundances <- data.frame(taxa_sums(ZHAN), taxa_names(ZHAN), taxa_sums(phyloseq_standardize_otu_abundance(ZHAN, method = "pa"))) 
+colnames(abundances) <- c("abundance", "hash", "nsamples")
+
+traitsandmdoepi <- merge(traitsandmdoepi, abundances, by = "hash")
+traitsandmdoepi$MaxSize <- as.numeric(traitsandmdoepi$MaxSize)
+
+meandepthnight <- rowMeans(traitsandmdoepi[,c("cycle1N", "cycle2N", "cycle3N", "cycle4N")], na.rm = T)
+meandepthday <- rowMeans(traitsandmdoepi[,c("cycle1D", "cycle2D", "cycle3D", "cycle4D")], na.rm = T)
+#mdo_COI$classification[meandepth > 200] <- "mesopelagic"
+traitsandmdoepi$stratum <- NA
+traitsandmdoepi$stratum[meandepthnight > 200] <- "Mesopelagic" #first define based on night depth
+traitsandmdoepi$stratum[meandepthnight <= 200] <- "Epipelagic"
+traitsandmdoepi$stratum[meandepthday > 200] <- "Mesopelagic" #then replace with day depth since this is that traditional way to define (mesopelagic residents ascend during the night)
+traitsandmdoepi$stratum[meandepthday <= 200] <- "Epipelagic"
+
+
+mdoepi_long_diet <- traitsandmdoepi[,c("hash", "cycle1N", "C1Nnsamples", "cycle2N", "C2Nnsamples",  "cycle3N", "C3Nnsamples", "cycle4N", "C4Nnsamples", "cycle1D", "C1Dnsamples", "cycle2D",  "C2Dnsamples", "cycle3D", "C3Dnsamples", "cycle4D", "C4Dnsamples", "Diet", "FeedingBehavior", "Spawning", "AsexualRepro", "Carbon", "stratum", "Subclass", "Genus", "abundance", "nsamples", "MaxSize")] %>% tidyr::pivot_longer(names_to = "cycle", values_to = "mdo", cols = c("cycle1N", "cycle2N",  "cycle3N", "cycle4N","cycle1D", "cycle2D",  "cycle3D", "cycle4D"))
+
+mdoepi_long_diet$cyclen <- strsplit(mdoepi_long_diet$cycle, split = "") %>% sapply(extract2, 6)
+mdoepi_long_diet$time <- strsplit(mdoepi_long_diet$cycle, split = "") %>% sapply(extract2, 7)
+mdoepi_foranova <- mdoepi_long_diet
+#mdo_foranova <- mdo_foranova[mdo_foranova$taxon == "Calanoida" | mdo_foranova$taxon == "Euphausiacea" | mdo_foranova$taxon == "Cnidaria" | mdo_foranova$taxon == "Halocyprida" | mdo_foranova$taxon == "Polychaeta",]
+mdoepi_foranova$chlorophyllmax <- NA
+mdoepi_foranova$chlorophyllmax[mdoepi_foranova$cyclen == 1] <- enviro_data$chlmax[enviro_data$cyclen == 1]
+mdoepi_foranova$chlorophyllmax[mdoepi_foranova$cyclen == 2] <- enviro_data$chlmax[enviro_data$cyclen == 2]
+mdoepi_foranova$chlorophyllmax[mdoepi_foranova$cyclen == 3] <- enviro_data$chlmax[enviro_data$cyclen == 3]
+mdoepi_foranova$chlorophyllmax[mdoepi_foranova$cyclen == 4] <- enviro_data$chlmax[enviro_data$cyclen == 4]
+mdoepi_foranova$oneperclight <- NA
+mdoepi_foranova$oneperclight[mdoepi_foranova$cyclen == 1] <- enviro_data$oneperclight[enviro_data$cyclen == 1]
+mdoepi_foranova$oneperclight[mdoepi_foranova$cyclen == 2] <- enviro_data$oneperclight[enviro_data$cyclen == 2]
+mdoepi_foranova$oneperclight[mdoepi_foranova$cyclen == 3] <- enviro_data$oneperclight[enviro_data$cyclen == 3]
+mdoepi_foranova$oneperclight[mdoepi_foranova$cyclen == 4] <- enviro_data$oneperclight[enviro_data$cyclen == 4]
+mdoepi_foranova$beamC100m <- NA
+mdoepi_foranova$beamC100m[mdoepi_foranova$cyclen == 1] <- enviro_data$beamC100m[enviro_data$cyclen == 1]
+mdoepi_foranova$beamC100m[mdoepi_foranova$cyclen == 2] <- enviro_data$beamC100m[enviro_data$cyclen == 2]
+mdoepi_foranova$beamC100m[mdoepi_foranova$cyclen == 3] <- enviro_data$beamC100m[enviro_data$cyclen == 3]
+mdoepi_foranova$beamC100m[mdoepi_foranova$cyclen == 4] <- enviro_data$beamC100m[enviro_data$cyclen == 4]
+mdoepi_foranova$distancefromshorekm <- NA
+mdoepi_foranova$distancefromshorekm[mdoepi_foranova$cyclen == 1] <- 272.20
+mdoepi_foranova$distancefromshorekm[mdoepi_foranova$cyclen == 2] <- 177.0
+mdoepi_foranova$distancefromshorekm[mdoepi_foranova$cyclen == 3] <- 57.25
+mdoepi_foranova$distancefromshorekm[mdoepi_foranova$cyclen == 4] <- 11.78
+
+
+mdoepi_foranova$thermocline<- NA
+mdoepi_foranova$thermocline[mdoepi_foranova$cyclen == 1] <- 100
+mdoepi_foranova$thermocline[mdoepi_foranova$cyclen == 2] <- 115
+mdoepi_foranova$thermocline[mdoepi_foranova$cyclen == 3] <- 75
+mdoepi_foranova$thermocline[mdoepi_foranova$cyclen == 4] <- 25
+
+mdoepi_foranova$n2<- NA
+mdoepi_foranova$n2[mdoepi_foranova$cyclen == 1] <- 15
+mdoepi_foranova$n2[mdoepi_foranova$cyclen == 2] <- 100
+mdoepi_foranova$n2[mdoepi_foranova$cyclen == 3] <- 45
+mdoepi_foranova$n2[mdoepi_foranova$cyclen == 4] <- 40
+
+mdoepi_foranova$oxy100<- NA
+mdoepi_foranova$oxy100[mdoepi_foranova$cyclen == 1] <- 225
+mdoepi_foranova$oxy100[mdoepi_foranova$cyclen == 2] <- 250
+mdoepi_foranova$oxy100[mdoepi_foranova$cyclen == 3] <- 200
+mdoepi_foranova$oxy100[mdoepi_foranova$cyclen == 4] <- 125
+
+mdoepi_foranova$particlemax<- NA
+mdoepi_foranova$particlemax[mdoepi_foranova$cyclen == 1] <- 70
+mdoepi_foranova$particlemax[mdoepi_foranova$cyclen == 2] <- 80
+mdoepi_foranova$particlemax[mdoepi_foranova$cyclen == 3] <- 20
+mdoepi_foranova$particlemax[mdoepi_foranova$cyclen == 4] <- 5
+
+
+#remove taxa without traits
+mdoepi_foranova$Diet[mdoepi_foranova$Diet %in% c("nd")] <- NA
+mdoepi_foranova$FeedingBehavior[mdoepi_foranova$FeedingBehavior %in% c("nd", "NA")] <- NA
+mdoepi_foranova$Spawning[mdoepi_foranova$Spawning %in% c("nd", "NA")] <- NA
+mdoepi_foranova$AsexualRepro[mdoepi_foranova$AsexualRepro %in% c("nd", "NA")] <- NA
+mdoepi_foranova$Carbon[mdoepi_foranova$Carbon %in% c("nd", "NA")] <- NA
+
+#manipulate some variables to make testing easier
+mdoepi_foranova$cyclenum <- as.numeric(mdoepi_foranova$cyclen)
+mdoepi_foranova$mdoplusone <- mdoepi_foranova$mdo+1
+mdoepi_foranova <- mdoepi_foranova[!is.na(mdoepi_foranova$mdo),]
+
+#save a copy for the future
+mdo_foranovastorage <- mdoepi_foranova
+
+
+ggplot(mdoepi_foranova) + 
+  geom_point(aes(x = cyclen, y = chlorophyllmax, color = "Depth of Chlorophyll Max")) + 
+  geom_point(aes(x = cyclen, y = beamC100m, color = "BeamC at 100 m")) + 
+  geom_point(aes(x=cyclen, y = oneperclight, color = "One Percent Light Level"))+ 
+  geom_point(aes(x=cyclen, y = distancefromshorekm, color = "Distance From Shore"))+ 
+  scale_y_reverse()
+
+mdoepi_foranova_fullcolumn <- mdoepi_foranova
+ggplot(mdoepi_foranova_fullcolumn)+ 
+  geom_jitter(aes(x=cyclenum, y = mdo, color = nsamples), width = 0.2) + 
+  geom_line(aes(x = cyclenum, y = mdo, group = hash), alpha = 0.2) +
+  scale_y_reverse() +
+  theme_bw() + 
+  facet_grid(stratum~time)
+
+
+my1aov <- aov(mdo~cyclen, data=mdoepi_foranova_fullcolumn[mdoepi_foranova_fullcolumn$time =="D",])
+Anova(my1aov, type=2)
+my2aov <- aov(mdo~cyclen, data=mdoepi_foranova_fullcolumn[mdoepi_foranova_fullcolumn$time =="N",])
+Anova(my2aov, type = 2)
+my3aov <- aov(mdo~cyclen+time, data=mdoepi_foranova_fullcolumn)
+Anova(my3aov, type=2)
+my4aov <- aov(mdo~cyclen, data=mdoepi_foranova_fullcolumn)
+Anova(my4aov, type=2)
+#test wehther there is differences in mean depth of occurence between cycles across all depth, within each otu and within each diel set 
+#pvalue < 0.01 always
+
+ggplot(mdoepi_foranova_fullcolumn)+ 
+  geom_jitter(aes(x=cyclenum, y = mdo, color = nsamples), width = 0.2) + 
+  geom_line(aes(x = cyclenum, y = mdo, group = hash), alpha = 0.2) +
+  scale_y_reverse() +
+  theme_bw() + 
+  facet_grid(stratum~time)
+
+
+# okay - is the linear model (treating each hash separately for each diel) better for distance offshore, one percent light level, cyclen, or chlorophyll
+mod1 = lm(mdo ~ cyclenum + hash + time, data = mdoepi_foranova_fullcolumn)
+mod2 = lm(mdo ~ distancefromshorekm  + hash + time, data = mdoepi_foranova_fullcolumn)
+mod3 = lm(mdo ~ chlorophyllmax + hash + time, data = mdoepi_foranova_fullcolumn)
+mod4 = lm(mdo ~ oneperclight + hash + time, data = mdoepi_foranova_fullcolumn)
+mod5 = lm(mdo ~ thermocline + hash + time, data = mdoepi_foranova_fullcolumn)
+mod6 = lm(mdo ~ n2  + hash + time, data = mdoepi_foranova_fullcolumn)
+mod7 = lm(mdo ~ oxy100 + hash + time, data = mdoepi_foranova_fullcolumn)
+mod8 = lm(mdo ~ particlemax + hash + time, data = mdoepi_foranova_fullcolumn)
+zhan200m <- model.sel(list(mod3, mod4, mod5, mod6, mod7, mod8))
+zhan200m
+#compareLM(mod1, mod2, mod3)
+summary(mod3)
+summary(mod4)
+```
+
+```{r}
+mdoepi_forplot <- mdoepi_foranova_fullcolumn[mdoepi_foranova_fullcolumn$nsamples > 2,]
+
+mdoepi_forplot$groupby <- paste(mdoepi_forplot$hash, mdoepi_forplot$time)
+mdoepi_forplot$townsamples <- NA
+mdoepi_forplot$townsamples[mdoepi_forplot$cyclenum == 1 & mdoepi_forplot$time == "N"] <- mdoepi_forplot$C1Nnsamples[mdoepi_forplot$cyclenum == 1 & mdoepi_forplot$time == "N"]
+mdoepi_forplot$townsamples[mdoepi_forplot$cyclenum == 2 & mdoepi_forplot$time == "N"] <- mdoepi_forplot$C2Nnsamples[mdoepi_forplot$cyclenum == 2 & mdoepi_forplot$time == "N"]
+mdoepi_forplot$townsamples[mdoepi_forplot$cyclenum == 3 & mdoepi_forplot$time == "N"] <- mdoepi_forplot$C3Nnsamples[mdoepi_forplot$cyclenum == 3 & mdoepi_forplot$time == "N"]
+mdoepi_forplot$townsamples[mdoepi_forplot$cyclenum == 1 & mdoepi_forplot$time == "D"] <- mdoepi_forplot$C1Dnsamples[mdoepi_forplot$cyclenum == 1 & mdoepi_forplot$time == "D"]
+mdoepi_forplot$townsamples[mdoepi_forplot$cyclenum == 2 & mdoepi_forplot$time == "D"] <- mdoepi_forplot$C2Dnsamples[mdoepi_forplot$cyclenum == 2 & mdoepi_forplot$time == "D"]
+mdoepi_forplot$townsamples[mdoepi_forplot$cyclenum == 3 & mdoepi_forplot$time == "D"] <- mdoepi_forplot$C3Dnsamples[mdoepi_forplot$cyclenum == 3 & mdoepi_forplot$time == "D"]
+mdo_foranova_sorted <- ## see: https://github.com/tidyverse/ggplot2/issues/3535 to sort so that you cna jitter points and lines ot match
+  mdoepi_forplot %>%
+  arrange(groupby, chlorophyllmax, mdo)
+p_epi <- ggplot(mdo_foranova_sorted, aes(x=chlorophyllmax, y = mdo, group = groupby))+  #color = townsamples
+  geom_point(position = position_jitter(width = 4, height = 5, seed = 34), size = 1.1) + 
+  geom_line(position = position_jitter(width = 4, height = 5, seed = 34), alpha = 0.2) +
+  scale_y_reverse(limits = c(200,0)) +
+  theme_bw() + 
+  xlab(NULL) + 
+  ylab("Mean Depth of Occurence (m)") +
+  geom_hline(yintercept = 0, color = "grey65") + 
+  scale_x_reverse() +
+  ggtitle("18S: Depth of Chl. Max (m), 0-200m")
+p_epi_18S <- p_epi
+
+
+p_epi
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/MDOvsLightEPI_18S.jpeg", height = 4.5, width = 6.8, unit = "in", quality = 100, res = 300)
+p_epi
+dev.off()
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/MDOvsLightEPI_18S.pdf", height = 4.5, width = 6.8)
+p_epi
+dev.off()
+
+
+ggplot(mdo_foranova_sorted, aes(x=oneperclight, y = mdo, group = groupby))+  #color = townsamples
+  geom_point(position = position_jitter(width = 4, height = 10, seed = 34)) + 
+  geom_line(position = position_jitter(width = 4, height = 10, seed = 34), alpha = 0.2) +
+  scale_y_reverse(limits = c(200,0)) +
+  theme_bw() + 
+  xlab("Depth of 1% Light Level (m)") + 
+  ylab("Mean Depth of Occurence (m)") +
+  geom_hline(yintercept = 0, color = "grey65") 
+
+```
+
+
+```{r}
+arrangedlight <- ggarrange(p_3cyc + rremove("xlab") + rremove("ylab") , p_epi + rremove("xlab") + rremove("ylab"), nrow = 2, ncol =1, align = "hv", labels = "auto", vjust = 1) #+ rremove("xlab") + rremove("ylab")
+arrangedlight <- annotate_figure(arrangedlight, left = textGrob("Mean depth of occurence (m)", rot = 90, vjust = 1),
+                    bottom = text_grob("Depth of the 1% light level (m)"))
+arrangedlight
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/MDOvsLightBOTH_18S.jpeg", height = 4.5, width = 6.8, unit = "in", quality = 100, res = 300)
+arrangedlight
+dev.off()
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/MDOvsLightBOTH_18S.pdf", height = 4.5, width = 6.8)
+arrangedlight
+dev.off()
+
+```
+
+
+```{r}
+arrangedlight <- ggarrange(p_epi_18S + rremove("xlab") + rremove("ylab") + theme(plot.title = element_text(size=11)), 
+                           p_epi_coi + rremove("xlab") + rremove("ylab") + theme(plot.title = element_text(size=11)), 
+                           p_3cyc_18S + rremove("xlab") + rremove("ylab") + theme(plot.title = element_text(size=11)), 
+                           p_3cyc_coi + rremove("xlab") + rremove("ylab") + theme(plot.title = element_text(size=11)), 
+                           nrow = 2, ncol =2, align = "hv", labels = "auto", vjust = 1) #+ rremove("xlab") + rremove("ylab")
+arrangedlight <- annotate_figure(arrangedlight, left = textGrob("Mean depth of occurence (m)", rot = 90, vjust = 1))
+arrangedlight
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/MDOvsLightBOTHDEPTHS_BOTHMS.jpeg", height = 4.5, width = 6.8, unit = "in", quality = 100, res = 300)
+arrangedlight
+dev.off()
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/MDOvsLightBOTHDEPTHS_BOTHMS.pdf", height = 4.5, width = 6.8)
+arrangedlight
+dev.off()
+```
+
+```{r}
+arrangedlightfull <- ggarrange(p_3cyc_18S + rremove("xlab") + rremove("ylab") + theme(plot.title = element_text(size=11)), 
+                           p_3cyc_coi + rremove("xlab") + rremove("ylab") + theme(plot.title = element_text(size=11)), 
+                           nrow = 2, ncol =1, align = "hv", labels = "auto", vjust = 1) #+ rremove("xlab") + rremove("ylab")
+arrangedlightfull <- annotate_figure(arrangedlightfull, left = textGrob("Mean depth of occurence (m)", rot = 90, vjust = 1))
+arrangedlightfull
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/MDOvsLight0-400_BOTHMS.jpeg", height = 4.5, width = 3.4, unit = "in", quality = 100, res = 300)
+arrangedlightfull
+dev.off()
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/MDOvsLight0-400_BOTHMS.pdf", height = 4.5, width = 3.4)
+arrangedlightfull
+dev.off()
+```
+
+

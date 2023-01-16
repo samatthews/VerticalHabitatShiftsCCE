@@ -1,0 +1,284 @@
+---
+title: "Untitled"
+output: html_document
+date: "2022-12-15"
+---
+
+
+```{r size weighted mean and sd}
+#merge samples by cycle
+sample_data(ZHAN)$CycleChar <- paste("Cycle", sample_data(ZHAN)$Cycle)
+ZHANcycles <- merge_samples(ZHAN, group = "CycleChar", fun = sum)
+
+# merge taxa by size
+tax_table(ZHANcycles) <- tax_table(ZHANcycles)[,c("MaxSize", "DVMBehavior")]
+ZHANcyclesglom <- tax_glom(ZHANcycles, taxrank = "MaxSize")
+taxa_names(ZHANcyclesglom) <- tax_table(ZHANcyclesglom)[,c("MaxSize")]
+
+# convert to relative abundance
+ZHANcyclesra <- transform_sample_counts(ZHANcyclesglom, function(x) x / sum(x) )
+
+#get data
+smdat <- sample_data(ZHANcyclesra)
+otudat <- otu_table(ZHANcyclesra)
+#txtb <- tax_table(ZHANcyclesra)
+#colnames(tax_table(txtb)) <- colnames(taxtabletoadd)
+#taxa_names(txtb) <- taxtabletoadd$hash
+
+# get otu table 
+ZHANsizecycles <- data.frame(otu_table(ZHANcyclesra))
+ZHANsizecycles <- data.frame(t(ZHANsizecycles))
+ZHANsizecycles$size <- as.numeric(taxa_names(ZHANcyclesra))
+
+
+#test stat diffs btwn cycles
+#ZHANsizecycleslong <- gather(ZHANsizecycles, Cycle.1, Cycle.2, Cycle.3, Cycle.4, value = "counts", key = "Cycle")
+#ZHANsizecycleslong$percent <- ZHANsizecycleslong$counts*1000
+chisq.test(ZHANsizecycleslong$percent, ZHANsizecycleslong$Cycle)
+#fisher.test(ZHANsizecycleslong$percent, ZHANsizecycleslong$Cycle)
+#plant.aov <- anova(lm(counts ~ Cycle, data = ZHANsizecycles))
+#plant.aov
+
+wtdmean.c1 <- weighted.mean(ZHANsizecycles$size, ZHANsizecycles$Cycle.1)
+wtdmean.c2 <- weighted.mean(ZHANsizecycles$size, ZHANsizecycles$Cycle.2)
+wtdmean.c3 <- weighted.mean(ZHANsizecycles$size, ZHANsizecycles$Cycle.3)
+wtdmean.c4 <- weighted.mean(ZHANsizecycles$size, ZHANsizecycles$Cycle.4)
+wtdvar.c1 <- wtd.var(ZHANsizecycles$size, ZHANsizecycles$Cycle.1, normwt=TRUE)
+wtdvar.c2 <- wtd.var(ZHANsizecycles$size, ZHANsizecycles$Cycle.2, normwt=TRUE)
+wtdvar.c3 <- wtd.var(ZHANsizecycles$size, ZHANsizecycles$Cycle.3, normwt=TRUE)
+wtdvar.c4 <- wtd.var(ZHANsizecycles$size, ZHANsizecycles$Cycle.4, normwt=TRUE)
+
+meanvartrans <- data.frame(Means = c(wtdmean.c1, wtdmean.c2, wtdmean.c3, wtdmean.c4), Variances = c(wtdvar.c1, wtdvar.c2, wtdvar.c3, wtdvar.c4), Cycle = c(1, 2, 3, 4))
+meanvartrans$SD <- sqrt(meanvartrans$Variances)
+meanvartrans$SE <- meanvartrans$SD/sqrt(length(ZHANsizecycles$size))
+meanvartranswithenviro <- merge(meanvartrans, enviro_data, by.x = "Cycle", by.y = "cyclen")
+meanvartranswithenviro18S <- meanvartranswithenviro
+
+ggplot(meanvartranswithenviro) + 
+  geom_point(aes(x= Cycle, y = Means))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Transparency") + 
+  xlab("Cycle") 
+
+
+
+##COI
+#merge samples by cycle
+sample_data(COI)$CycleChar <- paste("Cycle", sample_data(COI)$Cycle)
+COIcycles <- merge_samples(COI, group = "CycleChar", fun = sum)
+
+# merge taxa by size
+tax_table(COIcycles) <- tax_table(COI)[,c("MaxSize", "DVMBehavior")]
+COIcyclesglom <- tax_glom(COIcycles, taxrank = "MaxSize")
+taxa_names(COIcyclesglom) <- tax_table(COIcyclesglom)[,c("MaxSize")]
+
+# convert to relative abundance
+COIcyclesra <- transform_sample_counts(COIcyclesglom, function(x) x / sum(x) )
+
+#get data
+smdat <- sample_data(COIcyclesra)
+otudat <- otu_table(COIcyclesra)
+#txtb <- tax_table(ZHANcyclesra)
+#colnames(tax_table(txtb)) <- colnames(taxtabletoadd)
+#taxa_names(txtb) <- taxtabletoadd$hash
+
+# get otu table 
+COIsizecycles <- data.frame(otu_table(COIcyclesra))
+COIsizecycles <- data.frame(t(COIsizecycles))
+COIsizecycles$size <- as.numeric(taxa_names(COIcyclesra))
+
+wtdmean.c1 <- weighted.mean(COIsizecycles$size, COIsizecycles$Cycle.1)
+wtdmean.c2 <- weighted.mean(COIsizecycles$size, COIsizecycles$Cycle.2)
+wtdmean.c3 <- weighted.mean(COIsizecycles$size, COIsizecycles$Cycle.3)
+wtdmean.c4 <- weighted.mean(COIsizecycles$size, COIsizecycles$Cycle.4)
+wtdvar.c1 <- wtd.var(COIsizecycles$size, COIsizecycles$Cycle.1, normwt=TRUE)
+wtdvar.c2 <- wtd.var(COIsizecycles$size, COIsizecycles$Cycle.2, normwt=TRUE)
+wtdvar.c3 <- wtd.var(COIsizecycles$size, COIsizecycles$Cycle.3, normwt=TRUE)
+wtdvar.c4 <- wtd.var(COIsizecycles$size, COIsizecycles$Cycle.4, normwt=TRUE)
+
+meanvartrans <- data.frame(Means = c(wtdmean.c1, wtdmean.c2, wtdmean.c3, wtdmean.c4), Variances = c(wtdvar.c1, wtdvar.c2, wtdvar.c3, wtdvar.c4), Cycle = c(1, 2, 3, 4))
+meanvartrans$SD <- sqrt(meanvartrans$Variances)
+meanvartrans$SE <- meanvartrans$SD/sqrt(length(COIsizecycles$size))
+meanvartranswithenviro <- merge(meanvartrans, enviro_data, by.x = "Cycle", by.y = "cyclen")
+meanvartranswithenviroCOI <- meanvartranswithenviro
+
+ggplot(meanvartranswithenviro) + 
+  geom_point(aes(x= Cycle, y = Means))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Transparency") + 
+  xlab("Cycle") 
+
+
+
+##TOGETHER
+meanvartranswithenviroCOI$marker <- "COI"
+meanvartranswithenviro18S$marker <- "18S"
+meantransbothmakersfull <- rbind(meanvartranswithenviroCOI, meanvartranswithenviro18S)
+
+ggplot(meantransbothmakersfull) + 
+  geom_point(aes(x= Cycle, y = Means, group = marker, color = marker), position=position_dodge(width=0.5))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD, group = marker, color = marker), width = .1, position=position_dodge(width=0.5)) +
+  scale_color_manual(values = c("blue", "red")) +
+  ylab("Size (mm)") + 
+  xlab("Cycle") + 
+  theme_bw()
+
+transbothmarkersfull <- ggplot(meantransbothmakersfull) + 
+  geom_point(aes(x= Cycle, y = Means, group = marker, color = marker), position=position_dodge(width=0.5))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD, group = marker, color = marker), width = .1, position=position_dodge(width=0.5)) +
+  scale_color_manual(values = c("blue", "red"), name = "Marker") +
+  ylab("Size (mm)") + 
+  xlab("Cycle") + 
+  theme_bw() 
+transbothmarkersfull
+
+
+```
+
+
+
+```{r size epi weighted mean and sd}
+#merge samples by cycle
+sample_data(ZHAN)$CycleChar <- paste("Cycle", sample_data(ZHAN)$Cycle)
+ZHANcycles <- merge_samples(subset_samples(ZHAN, depthmean < 200), group = "CycleChar", fun = sum)
+
+# merge taxa by size
+tax_table(ZHANcycles) <- tax_table(ZHANcycles)[,c("MaxSize", "DVMBehavior")]
+ZHANcyclesglom <- tax_glom(ZHANcycles, taxrank = "MaxSize")
+taxa_names(ZHANcyclesglom) <- tax_table(ZHANcyclesglom)[,c("MaxSize")]
+
+# convert to relative abundance
+ZHANcyclesra <- transform_sample_counts(ZHANcyclesglom, function(x) x / sum(x) )
+
+#get data
+smdat <- sample_data(ZHANcyclesra)
+otudat <- otu_table(ZHANcyclesra)
+#txtb <- tax_table(ZHANcyclesra)
+#colnames(tax_table(txtb)) <- colnames(taxtabletoadd)
+#taxa_names(txtb) <- taxtabletoadd$hash
+
+# get otu table 
+ZHANsizecycles <- data.frame(otu_table(ZHANcyclesra))
+ZHANsizecycles <- data.frame(t(ZHANsizecycles))
+ZHANsizecycles$size <- as.numeric(taxa_names(ZHANcyclesra))
+
+wtdmean.c1 <- weighted.mean(ZHANsizecycles$size, ZHANsizecycles$Cycle.1)
+wtdmean.c2 <- weighted.mean(ZHANsizecycles$size, ZHANsizecycles$Cycle.2)
+wtdmean.c3 <- weighted.mean(ZHANsizecycles$size, ZHANsizecycles$Cycle.3)
+wtdmean.c4 <- weighted.mean(ZHANsizecycles$size, ZHANsizecycles$Cycle.4)
+wtdvar.c1 <- wtd.var(ZHANsizecycles$size, ZHANsizecycles$Cycle.1, normwt=TRUE)
+wtdvar.c2 <- wtd.var(ZHANsizecycles$size, ZHANsizecycles$Cycle.2, normwt=TRUE)
+wtdvar.c3 <- wtd.var(ZHANsizecycles$size, ZHANsizecycles$Cycle.3, normwt=TRUE)
+wtdvar.c4 <- wtd.var(ZHANsizecycles$size, ZHANsizecycles$Cycle.4, normwt=TRUE)
+
+meanvartrans <- data.frame(Means = c(wtdmean.c1, wtdmean.c2, wtdmean.c3, wtdmean.c4), Variances = c(wtdvar.c1, wtdvar.c2, wtdvar.c3, wtdvar.c4), Cycle = c(1, 2, 3, 4))
+meanvartrans$SD <- sqrt(meanvartrans$Variances)
+meanvartrans$SE <- meanvartrans$SD/sqrt(length(ZHANsizecycles$size))
+meanvartranswithenviro <- merge(meanvartrans, enviro_data, by.x = "Cycle", by.y = "cyclen")
+meanvartranswithenviro18S <- meanvartranswithenviro
+
+ggplot(meanvartranswithenviro) + 
+  geom_point(aes(x= Cycle, y = Means))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Transparency") + 
+  xlab("Cycle") 
+
+
+
+##COI
+#merge samples by cycle
+sample_data(COI)$CycleChar <- paste("Cycle", sample_data(COI)$Cycle)
+COIcycles <- merge_samples(subset_samples(COI, depthmean < 200), group = "CycleChar", fun = sum)
+
+# merge taxa by size
+tax_table(COIcycles) <- tax_table(COI)[,c("MaxSize", "DVMBehavior")]
+COIcyclesglom <- tax_glom(COIcycles, taxrank = "MaxSize")
+taxa_names(COIcyclesglom) <- tax_table(COIcyclesglom)[,c("MaxSize")]
+
+# convert to relative abundance
+COIcyclesra <- transform_sample_counts(COIcyclesglom, function(x) x / sum(x) )
+
+#get data
+smdat <- sample_data(COIcyclesra)
+otudat <- otu_table(COIcyclesra)
+#txtb <- tax_table(ZHANcyclesra)
+#colnames(tax_table(txtb)) <- colnames(taxtabletoadd)
+#taxa_names(txtb) <- taxtabletoadd$hash
+
+# get otu table 
+COIsizecycles <- data.frame(otu_table(COIcyclesra))
+COIsizecycles <- data.frame(t(COIsizecycles))
+COIsizecycles$size <- as.numeric(taxa_names(COIcyclesra))
+
+wtdmean.c1 <- weighted.mean(COIsizecycles$size, COIsizecycles$Cycle.1)
+wtdmean.c2 <- weighted.mean(COIsizecycles$size, COIsizecycles$Cycle.2)
+wtdmean.c3 <- weighted.mean(COIsizecycles$size, COIsizecycles$Cycle.3)
+wtdmean.c4 <- weighted.mean(COIsizecycles$size, COIsizecycles$Cycle.4)
+wtdvar.c1 <- wtd.var(COIsizecycles$size, COIsizecycles$Cycle.1, normwt=TRUE)
+wtdvar.c2 <- wtd.var(COIsizecycles$size, COIsizecycles$Cycle.2, normwt=TRUE)
+wtdvar.c3 <- wtd.var(COIsizecycles$size, COIsizecycles$Cycle.3, normwt=TRUE)
+wtdvar.c4 <- wtd.var(COIsizecycles$size, COIsizecycles$Cycle.4, normwt=TRUE)
+
+meanvartrans <- data.frame(Means = c(wtdmean.c1, wtdmean.c2, wtdmean.c3, wtdmean.c4), Variances = c(wtdvar.c1, wtdvar.c2, wtdvar.c3, wtdvar.c4), Cycle = c(1, 2, 3, 4))
+meanvartrans$SD <- sqrt(meanvartrans$Variances)
+meanvartrans$SE <- meanvartrans$SD/sqrt(length(COIsizecycles$size))
+meanvartranswithenviro <- merge(meanvartrans, enviro_data, by.x = "Cycle", by.y = "cyclen")
+meanvartranswithenviroCOI <- meanvartranswithenviro
+
+ggplot(meanvartranswithenviro) + 
+  geom_point(aes(x= Cycle, y = Means))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Transparency") + 
+  xlab("Cycle") 
+
+
+
+##TOGETHER
+meanvartranswithenviroCOI$marker <- "COI"
+meanvartranswithenviro18S$marker <- "18S"
+meantransbothmakersepi <- rbind(meanvartranswithenviroCOI, meanvartranswithenviro18S)
+
+ggplot(meantransbothmakersepi) + 
+  geom_point(aes(x= Cycle, y = Means, group = marker, color = marker), position=position_dodge(width=0.5))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SE, ymax=Means+SE, group = marker, color = marker), width = .1, position=position_dodge(width=0.5)) +
+  scale_color_manual(values = c("blue", "red")) +
+  ylab("Size (mm)") + 
+  xlab("Cycle") + 
+  theme_bw()
+
+transbothmarkersepi <- ggplot(meantransbothmakersepi) + 
+  geom_point(aes(x= Cycle, y = Means, group = marker, color = marker), position=position_dodge(width=0.5))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SE, ymax=Means+SE, group = marker, color = marker), width = .1, position=position_dodge(width=0.5)) +
+  scale_color_manual(values = c("blue", "red"), name = "Marker") +
+  ylab("Size (mm)") + 
+  xlab("Cycle") + 
+  theme_bw() 
+transbothmarkersepi
+
+```
+
+
+```{r plot together}
+meantransbothmakersepi$Depth <- "0-200m"
+meantransbothmakersfull$Depth <- "0-400m"
+meansizeall <- rbind(meantransbothmakersepi, meantransbothmakersfull)
+
+allsize <- ggplot(meansizeall) + 
+  geom_point(aes(x= Cycle, y = Means, shape = Depth, color = marker), position=position_dodge(width=0.5))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SE, ymax=Means+SE, linetype = Depth, color = marker), width = .01, position=position_dodge(width=0.5)) +
+  scale_color_manual(values = c("blue", "red"), name = "Marker") +
+  ylab("Body size (mm)") + 
+  xlab("Cycle") + 
+  theme_bw() 
+allsize
+
+size <- ggarrange(transbothmarkersfull, transbothmarkersepi, nrow = 1, ncol = 2)
+size
+
+
+```
+
+
+
+
+

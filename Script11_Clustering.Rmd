@@ -1,0 +1,135 @@
+---
+title: "Script 11 Clust"
+output: html_document
+date: "2022-12-19"
+---
+
+```{r load libraries}
+
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(ggdendro)
+library(gridExtra)
+library(stringr)
+library(dendextend)
+library(Biostrings)
+library(insect)
+library(ape)
+library(seqinr)
+library(decontam)
+library(lmodel2)
+library(mgcv)
+library(goeveg)
+library(metagMisc)
+library(magrittr)
+library(ggpubr)
+library(RColorBrewer)
+library(readxl)
+library(rcompanion)
+library(car)
+library(nlme)
+library(lme4)
+library(MuMIn)
+library(reshape2)
+library(Hmisc)
+```
+
+
+```{r}
+set.seed(5)
+leray_rare <- rarefy_even_depth(COI) 
+zhan_rare <- rarefy_even_depth(ZHAN)
+
+both_rare <- merge_phyloseq(leray_rare, zhan_rare)
+
+both_rare <- subset_samples(both_rare, depthbin != "0-0")
+sample_data(both_rare)$merge <- paste(sample_data(both_rare)$depthbin, "Cycle", sample_data(both_rare)$Cycle, sample_data(both_rare)$Diel)
+both_rare_comb <- merge_samples(both_rare, group = merge, fun = "sum") 
+
+sample_data(both_rare)$depthbin
+sample_data(both_rare)$Cycle
+sample_data(both_rare)$Diel
+```
+
+```{r bray curtis}
+
+bothotusrare <- t(data.frame(otu_table(both_rare)))
+
+bothotusrare_braydist <- vegdist(t(bothotusrare), method = "bray")
+bothotusrare_chao <- vegdist(t(bothotusrare), method = "chao")
+
+both_complete <- hclust(bothotusrare_braydist, method = 'complete')
+both_single <- hclust(bothotusrare_braydist, method = 'single')
+both_average <- hclust(bothotusrare_braydist, method = 'average')
+plot (both_complete, main = 'Complete linkage', cex = 0.25)
+plot (both_single, main = 'Single linkage', cex = 0.25)
+plot (both_average, main = 'Average linkage', cex = 0.5)
+abline(h = 0.7, col = "red")
+cutree(both_complete, h = 0.7)
+g24 <- cutree(both_complete, k = c(4,7))
+table(grp4 = g24[,"4"], grp7 = g24[,"7"])
+
+both_complete <- hclust(bothotusrare_chao, method = 'complete')
+both_single <- hclust(bothotusrare_chao, method = 'single')
+both_average <- hclust(bothotusrare_chao, method = 'average')
+
+
+plot (both_complete, main = 'Complete linkage', cex = 0.25)
+plot (both_single, main = 'Single linkage', cex = 0.25)
+plot (both_average, main = 'Average linkage', cex = 0.5)
+abline(h = 0.7, col = "red")
+
+g24 <- cutree(both_complete, k = c(4,7))
+table(grp4 = g24[,"4"], grp7 = g24[,"7"])
+
+groups <- cutree (both_complete, k = 7)
+groups
+group.order <- groups[both_complete$order]
+group.order
+group.in.cluster <- unique (group.order)
+group.in.cluster
+plot (both_complete, cex = 0.5, main = 'Chao distance\ncombined 18S and COI taxa', ylab="Chao distance", xlab="Clustered samples")
+rect.hclust (both_complete, border = group.in.cluster, k = 7) 
+#legend ('topleft', legend = paste ('Cluster', 1:7), pch = 22, col = 1:7, bty = 'n')
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/clusteredsamples.pdf", height =4, width = 6.5)
+plot (both_complete, cex = 0.3, main = 'Chao distance\ncombined 18S and COI taxa', ylab="Chao distance", xlab="Clustered samples")
+rect.hclust (both_complete, border = group.in.cluster, k = 7) 
+dev.off()
+
+
+```
+
+```{r save clusters for manually making sample cluster fig}
+
+BCI.env <- read.delim ('https://raw.githubusercontent.com/zdealveindy/anadat-r/master/data/bci.env.txt')
+SAMPLE.loc <- data.frame(sample_data(both_rare))
+plot (depthmean ~ Cycle, data = SAMPLE.loc, pch = groups, cex = 3)  # this is the simple version, only with symbols differentiating individual groups
+SAMPLE.loc$groups <- groups
+SAMPLE.loc$names <- names(groups)
+SAMPLE.loc$groups.fac <- as.factor(groups)
+
+SAMPLE.loc$Diel[SAMPLE.loc$Diel == "day"] <- "Day"
+SAMPLE.loc$Diel[SAMPLE.loc$Diel == "night"] <- "Night"
+
+cluster <- ggplot(SAMPLE.loc) + 
+  geom_point(aes(x=depthmean, y = Cycle, color = groups.fac), size = 10, shape = 15) + 
+  facet_wrap(.~Diel) + 
+  coord_flip() +
+  scale_x_reverse() + 
+  theme_bw() + 
+  scale_color_brewer(type = "qual", palette = "Dark2", name = "Group") + 
+  xlab("Depth (m)")
+cluster
+
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/Chao_Complete_7Clusters.pdf", height =6, width = 8)
+cluster
+dev.off()
+
+ 
+
+```

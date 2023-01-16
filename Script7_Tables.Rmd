@@ -1,0 +1,360 @@
+---
+title: "Script7_Tables"
+output: html_document
+date: "2022-10-18"
+---
+
+```{r load libraries}
+
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+#library(clustsig) not available anymore
+library(ggdendro)
+library(gridExtra)
+library(stringr)
+library(dendextend)
+library(Biostrings)
+library(insect)
+library(ape)
+library(seqinr)
+library(decontam)
+library(lmodel2)
+library(mgcv)
+library(goeveg)
+library(metagMisc)
+library(magrittr)
+library(ggpubr)
+library(RColorBrewer)
+library(readxl)
+library(rcompanion)
+library(car)
+library(nlme)
+library(lme4)
+library(MuMIn)
+library(reshape2)
+
+```
+
+```{r load data}
+load("COIdataforASM.rdat") #this loads calculated MDO, a rarified version of the dataset, the dataset that the MDO was calculated on, and the epipelagic MDO 
+load("ZHANdataforASM.rdat")#this loads calculated MDO, a rarified version of the dataset, the dataset that the MDO was calculated on, and the epipelagic MDO 
+load("tables_bothmarkers_absentspeciesremoved_COIstopcodonsremoved_traitsadded_withDVM.Rdat") #this overwrites the objects "ZHAN" and "COI" with the updated versions that have been filtered to remove pseudogenes, and have migratory classification added, and have the taxonomy of species not occuring the N. Pacific removed, and have empty taxa removed
+
+
+```
+
+
+```{r number of COI OTUs assigned}
+Kingdom_count <- nrow(tax_table(COI)[tax_table(COI)[,3]!=""])
+Phylum_count <- nrow(tax_table(COI)[tax_table(COI)[,4]!=""])
+Class_count <- nrow(tax_table(COI)[tax_table(COI)[,6]!=""])
+Order_count <- nrow(tax_table(COI)[tax_table(COI)[,9]!=""])
+Family_count <- nrow(tax_table(COI)[tax_table(COI)[,10]!=""])
+Genus_count <- nrow(tax_table(COI)[tax_table(COI)[,11]!=""])
+Species_count <- nrow(tax_table(COI)[tax_table(COI)[,12]!=""])
+
+MaxSize_count <- ntaxa(COI)-nrow(tax_table(COI)[is.na(tax_table(COI)[,15])])
+Diet_count <- ntaxa(COI)-nrow(tax_table(COI)[tax_table(COI)[,16]==""])
+FeedingBehav_count <- ntaxa(COI)-nrow(tax_table(COI)[(tax_table(COI)[,17]=="")])
+Spawning_count <- ntaxa(COI)-nrow(tax_table(COI)[(tax_table(COI)[,18]=="")])
+AsexRepro_count <- ntaxa(COI)-nrow(tax_table(COI)[(tax_table(COI)[,19]=="")])
+Carbon_count <- ntaxa(COI)-nrow(tax_table(COI)[(tax_table(COI)[,21]=="")])
+Transparency_count <- ntaxa(COI)-nrow(tax_table(COI)[is.na(tax_table(COI)[,22])])
+ShowingDVM_count <- nrow(tax_table(COI)[(tax_table(COI)[,23]=="Migratory")])
+
+TotalNumber <- ntaxa(COI)
+
+identifiedCOI <- data.frame(Kingdom_count, Phylum_count, Class_count, Order_count, Family_count, Genus_count, Species_count, MaxSize_count, Diet_count, FeedingBehav_count, Spawning_count, AsexRepro_count, Carbon_count, Transparency_count, ShowingDVM_count, TotalNumber)
+identifiedCOI <- t(identifiedCOI)
+```
+
+
+```{r number of 18S ASVs assigned}
+Kingdom_count <- nrow(tax_table(ZHAN)[tax_table(ZHAN)[,3]!=""])
+Phylum_count <- nrow(tax_table(ZHAN)[tax_table(ZHAN)[,4]!=""])
+Class_count <- nrow(tax_table(ZHAN)[tax_table(ZHAN)[,6]!=""])
+Order_count <- nrow(tax_table(ZHAN)[tax_table(ZHAN)[,9]!=""])
+Family_count <- nrow(tax_table(ZHAN)[tax_table(ZHAN)[,10]!=""])
+Genus_count <- nrow(tax_table(ZHAN)[tax_table(ZHAN)[,11]!=""])
+Species_count <- nrow(tax_table(ZHAN)[tax_table(ZHAN)[,12]!=""])
+
+MaxSize_count <- ntaxa(ZHAN)-nrow(tax_table(ZHAN)[is.na(tax_table(ZHAN)[,15])])
+Diet_count <- ntaxa(ZHAN)-nrow(tax_table(ZHAN)[tax_table(ZHAN)[,16]==""])
+FeedingBehav_count <- ntaxa(ZHAN)-nrow(tax_table(ZHAN)[(tax_table(ZHAN)[,17]=="")])
+Spawning_count <- ntaxa(ZHAN)-nrow(tax_table(ZHAN)[(tax_table(ZHAN)[,18]=="")])
+AsexRepro_count <- ntaxa(ZHAN)-nrow(tax_table(ZHAN)[(tax_table(ZHAN)[,19]=="")])
+Carbon_count <- ntaxa(ZHAN)-nrow(tax_table(ZHAN)[(tax_table(ZHAN)[,21]=="")])
+Transparency_count <- ntaxa(ZHAN)-nrow(tax_table(ZHAN)[is.na(tax_table(ZHAN)[,22])])
+ShowingDVM_count <- nrow(tax_table(ZHAN)[(tax_table(ZHAN)[,23]=="Migratory")])
+
+TotalNumber <- ntaxa(ZHAN)
+
+identifiedZHAN <- data.frame(Kingdom_count, Phylum_count, Class_count, Order_count, Family_count, Genus_count, Species_count, MaxSize_count, Diet_count, FeedingBehav_count, Spawning_count, AsexRepro_count, Carbon_count, Transparency_count, ShowingDVM_count, TotalNumber)
+identifiedZHAN <- t(identifiedZHAN)
+
+```
+
+```{r combine, write table 1}
+identified_counts <- cbind(identifiedZHAN, identifiedCOI)
+colnames(identified_counts) <- c("18S", "COI")
+write.csv(identified_counts, file = "NumberofASVsandOTUsidentifiedbyTaxonomyandTrait.csv")
+identified_counts
+```
+
+
+```{r number of taxa shifting COI}
+
+#subtract offshore from nearshore, so if they're negative then it's a shift to deeper
+#shifts if there's a 50m shift between consecutive cycles, or a 100m shift between non consecutive cycles
+
+mdo_COI$shift3to2N <- mdo_COI$cycle3N - mdo_COI$cycle2N
+mdo_COI$shift2to1N <- mdo_COI$cycle2N - mdo_COI$cycle1N
+mdo_COI$shift3to1N <- mdo_COI$cycle3N - mdo_COI$cycle1N
+mdo_COI$shift3to2D <- mdo_COI$cycle3D - mdo_COI$cycle2D
+mdo_COI$shift2to1D <- mdo_COI$cycle2D - mdo_COI$cycle1D
+mdo_COI$shift3to1D <- mdo_COI$cycle3D - mdo_COI$cycle1D
+hist(mdo_COI$shift3to2N, breaks = 50)
+hist(mdo_COI$shift2to1N, breaks = 50)
+hist(mdo_COI$shift3to1N, breaks = 50)
+hist(mdo_COI$shift3to2D, breaks = 50)
+hist(mdo_COI$shift2to1D, breaks = 50)
+hist(mdo_COI$shift3to1D, breaks = 50)
+
+onecycleshift <- 25
+twocycleshift <- 50
+
+onecycleshiftstrict <- 50
+twocycleshiftstrict <- 10
+
+mdo_COI$DayShiftsDetected <- "No"
+mdo_COI$DayShiftsDetected[mdo_COI$shift3to2D <= -onecycleshift | mdo_COI$shift2to1D <= -onecycleshift | mdo_COI$shift3to1D <= -twocycleshift] <- "Yes"
+mdo_COI$NightShiftsDetected <- "No"
+mdo_COI$NightShiftsDetected[mdo_COI$shift3to2N <= -onecycleshift | mdo_COI$shift2to1N <= -onecycleshift | mdo_COI$shift3to1N <= -twocycleshift] <- "Yes"
+mdo_COI$ShiftsDetected <- "No"
+mdo_COI$ShiftsDetected[mdo_COI$shift3to2N <= -onecycleshift | mdo_COI$shift2to1N <= -onecycleshift | mdo_COI$shift3to1N <= -twocycleshift |mdo_COI$shift3to2D <= -onecycleshift | mdo_COI$shift2to1D <= -onecycleshift | mdo_COI$shift3to1D <= -twocycleshift] <- "Yes"
+
+mdo_COI$DayShiftsDetectedStrict <- "No"
+mdo_COI$DayShiftsDetectedStrict[mdo_COI$shift3to2D <= -onecycleshiftstrict | mdo_COI$shift2to1D <= -onecycleshiftstrict | mdo_COI$shift3to1D <= -twocycleshiftstrict] <- "Yes"
+mdo_COI$NightShiftsDetectedStrict <- "No"
+mdo_COI$NightShiftsDetectedStrict[mdo_COI$shift3to2N <= -onecycleshiftstrict | mdo_COI$shift2to1N <= -onecycleshiftstrict | mdo_COI$shift3to1N <= -twocycleshift] <- "Yes"
+mdo_COI$ShiftsDetectedStrict <- "No"
+mdo_COI$ShiftsDetectedStrict[mdo_COI$shift3to2N <= -onecycleshiftstrict | mdo_COI$shift2to1N <= -onecycleshiftstrict | mdo_COI$shift3to1N <= -twocycleshiftstrict |mdo_COI$shift3to2D <= -onecycleshiftstrict | mdo_COI$shift2to1D <= -onecycleshiftstrict | mdo_COI$shift3to1D <= -twocycleshiftstrict] <- "Yes"
+
+table(mdo_COI$ShiftsDetected)
+table(mdo_COI$DayShiftsDetected)
+table(mdo_COI$NightShiftsDetected)
+
+table(mdo_COI$ShiftsDetectedStrict)
+table(mdo_COI$DayShiftsDetectedStrict)
+table(mdo_COI$NightShiftsDetectedStrict)
+
+taxainfo_and_mdoCOI <- merge(tax_table(COI), mdo_COI, by.x = "hash", by.y = "name")
+
+resultsCOI <- table(taxainfo_and_mdoCOI$Phylum[taxainfo_and_mdoCOI$ShiftsDetectedStrict == "Yes"])
+resultsCOIall <- table(taxainfo_and_mdoCOI$Phylum)
+
+resultsCOIarthropods <- table(taxainfo_and_mdoCOI$Order[taxainfo_and_mdoCOI$ShiftsDetectedStrict == "Yes" & taxainfo_and_mdoCOI$Phylum == "Arthropoda"])
+resultsCOIallarthropods <- table(taxainfo_and_mdoCOI$Order[taxainfo_and_mdoCOI$Phylum == "Arthropoda"])
+
+resultsCOIcnidaria <- table(taxainfo_and_mdoCOI$Order[taxainfo_and_mdoCOI$ShiftsDetectedStrict == "Yes" & taxainfo_and_mdoCOI$Phylum == "Cnidaria"])
+resultsCOIallcnidaria <- table(taxainfo_and_mdoCOI$Order[taxainfo_and_mdoCOI$Phylum == "Cnidaria"])
+
+
+
+```
+
+```{r number of taxa shifting 18S}
+
+#subtract offshore from nearshore, so if they're negative then it's a shift to deeper
+#shifts if there's a 50m shift between consecutive cycles, or a 100m shift between non consecutive cycles
+
+mdo_ZHAN$shift3to2N <- mdo_ZHAN$cycle3N - mdo_ZHAN$cycle2N
+mdo_ZHAN$shift2to1N <- mdo_ZHAN$cycle2N - mdo_ZHAN$cycle1N
+mdo_ZHAN$shift3to1N <- mdo_ZHAN$cycle3N - mdo_ZHAN$cycle1N
+mdo_ZHAN$shift3to2D <- mdo_ZHAN$cycle3D - mdo_ZHAN$cycle2D
+mdo_ZHAN$shift2to1D <- mdo_ZHAN$cycle2D - mdo_ZHAN$cycle1D
+mdo_ZHAN$shift3to1D <- mdo_ZHAN$cycle3D - mdo_ZHAN$cycle1D
+hist(mdo_ZHAN$shift3to2N, breaks = 50)
+hist(mdo_ZHAN$shift2to1N, breaks = 50)
+hist(mdo_ZHAN$shift3to1N, breaks = 50)
+hist(mdo_ZHAN$shift3to2D, breaks = 50)
+hist(mdo_ZHAN$shift2to1D, breaks = 50)
+hist(mdo_ZHAN$shift3to1D, breaks = 50)
+
+onecycleshift <- 25
+twocycleshift <- 50
+
+onecycleshiftstrict <- 50
+twocycleshiftstrict <- 10
+
+mdo_ZHAN$DayShiftsDetected <- "No"
+mdo_ZHAN$DayShiftsDetected[mdo_ZHAN$shift3to2D <= -onecycleshift | mdo_ZHAN$shift2to1D <= -onecycleshift | mdo_ZHAN$shift3to1D <= -twocycleshift] <- "Yes"
+mdo_ZHAN$NightShiftsDetected <- "No"
+mdo_ZHAN$NightShiftsDetected[mdo_ZHAN$shift3to2N <= -onecycleshift | mdo_ZHAN$shift2to1N <= -onecycleshift | mdo_ZHAN$shift3to1N <= -twocycleshift] <- "Yes"
+mdo_ZHAN$ShiftsDetected <- "No"
+mdo_ZHAN$ShiftsDetected[mdo_ZHAN$shift3to2N <= -onecycleshift | mdo_ZHAN$shift2to1N <= -onecycleshift | mdo_ZHAN$shift3to1N <= -twocycleshift |mdo_ZHAN$shift3to2D <= -onecycleshift | mdo_ZHAN$shift2to1D <= -onecycleshift | mdo_ZHAN$shift3to1D <= -twocycleshift] <- "Yes"
+
+mdo_ZHAN$DayShiftsDetectedStrict <- "No"
+mdo_ZHAN$DayShiftsDetectedStrict[mdo_ZHAN$shift3to2D <= -onecycleshiftstrict | mdo_ZHAN$shift2to1D <= -onecycleshiftstrict | mdo_ZHAN$shift3to1D <= -twocycleshiftstrict] <- "Yes"
+mdo_ZHAN$NightShiftsDetectedStrict <- "No"
+mdo_ZHAN$NightShiftsDetectedStrict[mdo_ZHAN$shift3to2N <= -onecycleshiftstrict | mdo_ZHAN$shift2to1N <= -onecycleshiftstrict | mdo_ZHAN$shift3to1N <= -twocycleshift] <- "Yes"
+mdo_ZHAN$ShiftsDetectedStrict <- "No"
+mdo_ZHAN$ShiftsDetectedStrict[mdo_ZHAN$shift3to2N <= -onecycleshiftstrict | mdo_ZHAN$shift2to1N <= -onecycleshiftstrict | mdo_ZHAN$shift3to1N <= -twocycleshiftstrict |mdo_ZHAN$shift3to2D <= -onecycleshiftstrict | mdo_ZHAN$shift2to1D <= -onecycleshiftstrict | mdo_ZHAN$shift3to1D <= -twocycleshiftstrict] <- "Yes"
+
+table(mdo_ZHAN$ShiftsDetected)
+table(mdo_ZHAN$DayShiftsDetected)
+table(mdo_ZHAN$NightShiftsDetected)
+
+table(mdo_ZHAN$ShiftsDetectedStrict)
+table(mdo_ZHAN$DayShiftsDetectedStrict)
+table(mdo_ZHAN$NightShiftsDetectedStrict)
+
+taxainfo_and_mdoZHAN <- merge(tax_table(ZHAN), mdo_ZHAN, by.x = "hash", by.y = "name")
+
+
+resultsZHAN <- table(taxainfo_and_mdoZHAN$Phylum[taxainfo_and_mdoZHAN$ShiftsDetectedStrict == "Yes"])
+resultsZHANall <- table(taxainfo_and_mdoZHAN$Phylum)
+
+resultsZHANarthropods <- table(taxainfo_and_mdoZHAN$Order[taxainfo_and_mdoZHAN$ShiftsDetectedStrict == "Yes" & taxainfo_and_mdoZHAN$Phylum == "Arthropoda"])
+resultsZHANallarthropods <- table(taxainfo_and_mdoZHAN$Order[taxainfo_and_mdoZHAN$Phylum == "Arthropoda"])
+
+resultsZHANcnidaria <- table(taxainfo_and_mdoZHAN$Order[taxainfo_and_mdoZHAN$ShiftsDetectedStrict == "Yes" & taxainfo_and_mdoZHAN$Phylum == "Cnidaria"])
+resultsZHANallcnidaria <- table(taxainfo_and_mdoZHAN$Order[taxainfo_and_mdoZHAN$Phylum == "Cnidaria"])
+
+```
+
+```{r merge COI and 18S vert shifts, save results}
+#overall: 
+
+table(taxainfo_and_mdoZHAN$ShiftsDetectedStrict)
+table(taxainfo_and_mdoZHAN$ShiftsDetectedStrict)/ntaxa(ZHAN)
+table(taxainfo_and_mdoZHAN$NightShiftsDetectedStrict[taxainfo_and_mdoZHAN$DayShiftsDetectedStrict == "Yes"])
+table(taxainfo_and_mdoZHAN$NightShiftsDetectedStrict[taxainfo_and_mdoZHAN$DayShiftsDetectedStrict == "Yes"])/table(taxainfo_and_mdoZHAN$ShiftsDetectedStrict)
+
+table(taxainfo_and_mdoCOI$ShiftsDetectedStrict)
+table(taxainfo_and_mdoCOI$ShiftsDetectedStrict)/ntaxa(COI)
+table(taxainfo_and_mdoCOI$NightShiftsDetectedStrict[taxainfo_and_mdoCOI$DayShiftsDetectedStrict == "Yes"])
+table(taxainfo_and_mdoCOI$NightShiftsDetectedStrict[taxainfo_and_mdoCOI$DayShiftsDetectedStrict == "Yes"])/table(taxainfo_and_mdoCOI$ShiftsDetectedStrict)
+
+
+#shifts vs number of cycles:
+
+taxainfo_and_mdoZHAN$ncyclesnight <- rowSums(!is.na(taxainfo_and_mdoZHAN[c("cycle1N", "cycle2N", "cycle3N")]))
+taxainfo_and_mdoZHAN$ncyclesday <- rowSums(!is.na(taxainfo_and_mdoZHAN[c("cycle1D", "cycle2D", "cycle3D")]))
+taxainfo_and_mdoZHAN$C1 <- rowSums(!is.na(taxainfo_and_mdoZHAN[c("cycle1D")] | !is.na(taxainfo_and_mdoZHAN[c("cycle1N")])))
+taxainfo_and_mdoZHAN$C2 <- rowSums(!is.na(taxainfo_and_mdoZHAN[c("cycle2D")] | !is.na(taxainfo_and_mdoZHAN[c("cycle2N")])))
+taxainfo_and_mdoZHAN$C3 <- rowSums(!is.na(taxainfo_and_mdoZHAN[c("cycle3D")] | !is.na(taxainfo_and_mdoZHAN[c("cycle3N")])))
+taxainfo_and_mdoZHAN$ncyclestotal <- rowSums((taxainfo_and_mdoZHAN[c("C1", "C2", "C3")]))
+
+
+taxainfo_and_mdoCOI$ncyclesnight <- rowSums(!is.na(taxainfo_and_mdoCOI[c("cycle1N", "cycle2N", "cycle3N")]))
+taxainfo_and_mdoCOI$ncyclesday <- rowSums(!is.na(taxainfo_and_mdoCOI[c("cycle1D", "cycle2D", "cycle3D")]))
+taxainfo_and_mdoCOI$C1 <- rowSums(!is.na(taxainfo_and_mdoCOI[c("cycle1D")] | !is.na(taxainfo_and_mdoCOI[c("cycle1N")])))
+taxainfo_and_mdoCOI$C2 <- rowSums(!is.na(taxainfo_and_mdoCOI[c("cycle2D")] | !is.na(taxainfo_and_mdoCOI[c("cycle2N")])))
+taxainfo_and_mdoCOI$C3 <- rowSums(!is.na(taxainfo_and_mdoCOI[c("cycle3D")] | !is.na(taxainfo_and_mdoCOI[c("cycle3N")])))
+taxainfo_and_mdoCOI$ncyclestotal <- rowSums((taxainfo_and_mdoCOI[c("C1", "C2", "C3")]))
+
+table(taxainfo_and_mdoZHAN$ncyclesnight, taxainfo_and_mdoZHAN$NightShiftsDetectedStrict)
+table(taxainfo_and_mdoZHAN$ncyclesday, taxainfo_and_mdoZHAN$DayShiftsDetectedStrict)
+ZHANdetectedbyncycles <- table(taxainfo_and_mdoZHAN$ncyclestotal, taxainfo_and_mdoZHAN$ShiftsDetectedStrict)
+
+
+table(taxainfo_and_mdoCOI$ncyclesnight, taxainfo_and_mdoCOI$NightShiftsDetectedStrict)
+table(taxainfo_and_mdoCOI$ncyclesday, taxainfo_and_mdoCOI$DayShiftsDetectedStrict)
+COIdetectedbyncycles <- table(taxainfo_and_mdoCOI$ncyclestotal, taxainfo_and_mdoCOI$ShiftsDetectedStrict)
+
+
+bothncyclesdetected <- cbind(ZHANdetectedbyncycles, COIdetectedbyncycles)
+bothncyclesdetected <- data.frame(bothncyclesdetected)
+colnames(bothncyclesdetected) <- c("18S Fixed", "18S Shifting", "COI Fixed", "COI Shifting")
+bothncyclesdetected$Total18S <- rowSums(bothncyclesdetected[,c("18S Fixed", "18S Shifting")])
+bothncyclesdetected$TotalCOI <- rowSums(bothncyclesdetected[,c("COI Fixed", "COI Shifting")])
+bothncyclesdetected$PerShift18S <- bothncyclesdetected$`18S Shifting`/bothncyclesdetected$Total18S
+bothncyclesdetected$PerShiftCOI <- bothncyclesdetected$`COI Shifting`/bothncyclesdetected$TotalCOI
+
+bothncyclesdetected <- bothncyclesdetected[,c("18S Shifting", "PerShift18S", "18S Fixed", "Total18S", "COI Shifting", "PerShiftCOI", "COI Fixed", "TotalCOI")]
+
+write.csv(bothncyclesdetected, file = "ShiftsByNumberOfCycles.csv")
+
+#by taxon:
+verticallyshiftingtaxa <- bind_rows(resultsZHAN, resultsZHANall, resultsCOI, resultsCOIall)
+verticallyshiftingtaxa <- data.frame(t(verticallyshiftingtaxa))
+
+verticallyshiftingtaxa$Perc18S <- verticallyshiftingtaxa$X1/verticallyshiftingtaxa$X2
+verticallyshiftingtaxa$PercCOI <- verticallyshiftingtaxa$X3/verticallyshiftingtaxa$X4
+colnames(verticallyshiftingtaxa) <- c("Shifting 18S", "All 18S", "Shifting COI", "All COI", "Perc Shift 18S", "Perc Shift COI")
+verticallyshiftingtaxa <- verticallyshiftingtaxa[,c("Shifting 18S", "Perc Shift 18S",  "All 18S", "Shifting COI", "Perc Shift COI",  "All COI")]
+
+
+#arthropods:
+verticallyshiftingarthropods <- bind_rows(resultsZHANarthropods, resultsZHANallarthropods, resultsCOIarthropods, resultsCOIallarthropods)
+verticallyshiftingarthropods <- data.frame(t(verticallyshiftingarthropods))
+
+verticallyshiftingarthropods$Perc18S <- verticallyshiftingarthropods$X1/verticallyshiftingarthropods$X2
+verticallyshiftingarthropods$PercCOI <- verticallyshiftingarthropods$X3/verticallyshiftingarthropods$X4
+colnames(verticallyshiftingarthropods) <- c("Shifting 18S", "All 18S", "Shifting COI", "All COI", "Perc Shift 18S", "Perc Shift COI")
+verticallyshiftingarthropods <- verticallyshiftingarthropods[,c("Shifting 18S", "Perc Shift 18S",  "All 18S", "Shifting COI", "Perc Shift COI",  "All COI")]
+
+write.csv(verticallyshiftingarthropods, file = "NumberofASVsandOTUsShiftingDeeperArthropods.csv")
+
+
+
+#cniarians:
+verticallyshiftingcniaria <- bind_rows(resultsZHANcnidaria, resultsZHANallcnidaria, resultsCOIcnidaria, resultsCOIallcnidaria)
+verticallyshiftingcniaria <- data.frame(t(verticallyshiftingcniaria))
+
+verticallyshiftingcniaria$Perc18S <- verticallyshiftingcniaria$X1/verticallyshiftingcniaria$X2
+verticallyshiftingcniaria$PercCOI <- verticallyshiftingcniaria$X3/verticallyshiftingcniaria$X4
+colnames(verticallyshiftingcniaria) <- c("Shifting 18S", "All 18S", "Shifting COI", "All COI", "Perc Shift 18S", "Perc Shift COI")
+verticallyshiftingcniaria <- verticallyshiftingcniaria[,c("Shifting 18S", "Perc Shift 18S",  "All 18S", "Shifting COI", "Perc Shift COI",  "All COI")]
+
+write.csv(verticallyshiftingcniaria, file = "NumberofASVsandOTUsShiftingDeeperCniarians.csv")
+
+
+```
+
+
+#check zooscan groups
+```{r}
+
+
+zooscan_group_biomass_avg <- zooscan %>% 
+  dplyr::group_by(Class) %>%
+  dplyr:: mutate(meanbiomassugCm3 = mean(Carbon_mg_sum, na.rm=T), sumbiomassugCm3 = sum(Carbon_mg_sum, na.rm=T)) %>%
+  ungroup()
+zooscan_group_biomass_avg <- zooscan_group_biomass_avg[1:23,c("Class", "sumbiomassugCm3", "meanbiomassugCm3")]
+zooscan_group_biomass_avg <- zooscan_group_biomass_avg[order(zooscan_group_biomass_avg$meanbiomassugCm3),]
+total <- sum(zooscan_group_biomass_avg$sumbiomassugCm3)
+zooscan_group_biomass_avg$proportionoftotal <- zooscan_group_biomass_avg$sumbiomassugCm3/total
+
+zooscantable <- zooscan_group_biomass_avg[order(zooscan_group_biomass_avg$proportionoftotal, decreasing = TRUE),]
+
+
+```
+
+### write supplemental OTU tables
+```{r}
+
+ZHAN_OTU <- t(data.frame(otu_table(ZHAN)))
+ZHAN_OTU <- data.frame(ZHAN_OTU)
+ZHAN_OTU$TaxaNames <- taxa_names(ZHAN)
+ZHAN_Tax <- data.frame(tax_table(ZHAN))
+ZHAN_Tax <- ZHAN_Tax[,c("Kingdom", "Phylum", "Subphylum", "Class", "Subclass", "Superorder", "Order", "Family", "Genus", "Species", "hash")]
+ZHANotutable <- merge(ZHAN_OTU, ZHAN_Tax, by.x = "TaxaNames", by.y = "hash")
+
+COI_OTU <- t(data.frame(otu_table(COI)))
+COI_OTU <- data.frame(COI_OTU)
+COI_OTU$TaxaNames <- taxa_names(COI)
+COI_Tax <- data.frame(tax_table(COI))
+COI_Tax <- COI_Tax[,c("Kingdom", "Phylum", "Subphylum", "Class", "Subclass", "Superorder", "Order", "Family", "Genus", "Species", "hash")]
+COIotutable <- merge(COI_OTU, COI_Tax, by.x = "TaxaNames", by.y = "hash")
+
+
+write.csv(ZHANotutable, file = "TableS1a_18S-ASV-Table.csv")
+write.csv(COIotutable, file = "TableS1a_COI-OTU-Table.csv")
+
+```
+

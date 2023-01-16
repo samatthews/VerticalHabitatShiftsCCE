@@ -1,0 +1,2325 @@
+---
+title: "Script9_Traits_SummariesByCycle"
+output: html_document
+date: "2022-10-22"
+---
+
+```{r load libraries}
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(ggdendro)
+library(gridExtra)
+library(stringr)
+library(dendextend)
+library(Biostrings)
+library(insect)
+library(ape)
+library(seqinr)
+library(decontam)
+library(lmodel2)
+library(mgcv)
+library(goeveg)
+library(metagMisc)
+library(magrittr)
+library(ggpubr)
+library(RColorBrewer)
+library(readxl)
+library(rcompanion)
+library(car)
+library(nlme)
+library(lme4)
+library(MuMIn)
+library(reshape2)
+library(Hmisc)
+library(gt)
+library(ggpubr)
+library(Hmisc)
+```
+
+```{r load data}
+load("COIdataforASM.rdat") #this loads calculated MDO, a rarified version of the dataset, the dataset that the MDO was calculated on, and the epipelagic MDO 
+load("ZHANdataforASM.rdat")#this loads calculated MDO, a rarified version of the dataset, the dataset that the MDO was calculated on, and the epipelagic MDO 
+load("tables_bothmarkers_absentspeciesremoved_COIstopcodonsremoved_traitsadded_withDVM.Rdat") #this overwrites the objects "ZHAN" and "COI" with the updated versions that have been filtered to remove pseudogenes, and have migratory classification added, and have the taxonomy of species not occuring the N. Pacific removed, and have empty taxa removed
+
+COI <- subset_taxa(COI, Class != "Ascidiacea")
+COI <- subset_taxa(COI, Class != "Anthozoa")
+COI <- subset_taxa(COI, Order != "Nudibranchia")
+COI <- subset_taxa(COI, Order != "Sessilia")
+COI <- subset_taxa(COI, Order != "Actiniaria")
+
+ZHAN <- subset_taxa(ZHAN, Class != "Anthozoa")
+ZHAN <- subset_taxa(ZHAN, Class != "Sedentaria")
+ZHAN <- subset_taxa(ZHAN, Superorder != "Nudipleura")
+ZHAN <- subset_taxa(ZHAN, Order != "Sessilia")
+```
+
+
+#> diet 
+#plot proportion by depth for each cycle 
+# maybe combine 18S and COI onto the same plot (1 dotted one dashed)
+
+#DIET vertical
+```{r COI diet vertical}
+Dietplot <- COI
+
+#relable empty diet slots as unknown
+tax_table(Dietplot)[,15][tax_table(Dietplot)[,15]=="NA"] <- NA
+tax_table(Dietplot)[,15][is.na(tax_table(Dietplot)[,15])] <- "Unknown"
+
+#remove unknowns
+nounknowndiets <- subset_taxa(Dietplot, Diet != "Unknown")
+
+#subset the tax table and glom by trait
+tax_table(nounknowndiets) <- tax_table(nounknowndiets)[,c("Diet", "FeedingBehavior")]
+Dietplot_corrmat <- tax_glom(nounknowndiets)
+
+#rename the gloms to their diet mode
+taxa_names(Dietplot_corrmat) <- tax_table(Dietplot_corrmat)[,c("Diet")]
+dietsampledat <- data.frame(sample_data(Dietplot_corrmat))
+dietdat <- data.frame(otu_table(transform_sample_counts(Dietplot_corrmat, function(x) x / sum(x) )))
+diet <- merge(dietsampledat, dietdat, by = 'row.names')
+
+
+#scale to maximum observed within each type, to look at relative shifts
+cyc_avgs$Fluor_scaled <- cyc_avgs$Fluor
+cyc_avgs$Fluor_scaled[cyc_avgs$Cycle == 1] <- (cyc_avgs$Fluor[cyc_avgs$Cycle == 1])/max(cyc_avgs$Fluor[cyc_avgs$Cycle == 1]) #[cyc_avgs$Cycle == 1]
+cyc_avgs$Fluor_scaled[cyc_avgs$Cycle == 2] <- (cyc_avgs$Fluor[cyc_avgs$Cycle == 2])/max(cyc_avgs$Fluor[cyc_avgs$Cycle == 2]) #[cyc_avgs$Cycle == 2]
+cyc_avgs$Fluor_scaled[cyc_avgs$Cycle == 3] <- (cyc_avgs$Fluor[cyc_avgs$Cycle == 3])/max(cyc_avgs$Fluor[cyc_avgs$Cycle == 3]) #[cyc_avgs$Cycle == 3]
+cyc_avgs$Fluor_scaled[cyc_avgs$Cycle == 4] <- (cyc_avgs$Fluor[cyc_avgs$Cycle == 4])/max(cyc_avgs$Fluor[cyc_avgs$Cycle == 4]) #[cyc_avgs$Cycle == 4]
+cyc_avgs$LightExt_scaled <- cyc_avgs$LightExt
+cyc_avgs$LightExt_scaled[cyc_avgs$Cycle == 1] <- (cyc_avgs$LightExt[cyc_avgs$Cycle == 1])/max(cyc_avgs$LightExt[cyc_avgs$Cycle == 1]) #[cyc_avgs$Cycle == 1]
+cyc_avgs$LightExt_scaled[cyc_avgs$Cycle == 2] <- (cyc_avgs$LightExt[cyc_avgs$Cycle == 2])/max(cyc_avgs$LightExt[cyc_avgs$Cycle == 2]) #[cyc_avgs$Cycle == 2]
+cyc_avgs$LightExt_scaled[cyc_avgs$Cycle == 3] <- (cyc_avgs$LightExt[cyc_avgs$Cycle == 3])/max(cyc_avgs$LightExt[cyc_avgs$Cycle == 3]) #[cyc_avgs$Cycle == 3]
+cyc_avgs$LightExt_scaled[cyc_avgs$Cycle == 4] <- (cyc_avgs$LightExt[cyc_avgs$Cycle == 4])/max(cyc_avgs$LightExt[cyc_avgs$Cycle == 4]) #[cyc_avgs$Cycle == 4]
+diet$Carnivore_scaled <- diet$Carnivore
+diet$Carnivore_scaled[diet$Cycle == "4"] <- (diet$Carnivore[diet$Cycle == "4"])/max(diet$Carnivore) #[diet$Cycle == "4"]
+diet$Carnivore_scaled[diet$Cycle == "3"] <- (diet$Carnivore[diet$Cycle == "3"])/max(diet$Carnivore) #[diet$Cycle == "3"]
+diet$Carnivore_scaled[diet$Cycle == "2"] <- (diet$Carnivore[diet$Cycle == "2"])/max(diet$Carnivore) #[diet$Cycle == "2"]
+diet$Carnivore_scaled[diet$Cycle == "1"] <- (diet$Carnivore[diet$Cycle == "1"])/max(diet$Carnivore) #[diet$Cycle == "1"]
+diet$Herbivore_scaled <- diet$Herbivore
+diet$Herbivore_scaled[diet$Cycle == "4"] <- (diet$Herbivore[diet$Cycle == "4"])/max(diet$Herbivore) #[diet$Cycle == "4"]
+diet$Herbivore_scaled[diet$Cycle == "3"] <- (diet$Herbivore[diet$Cycle == "3"])/max(diet$Herbivore) #[diet$Cycle == "3"]
+diet$Herbivore_scaled[diet$Cycle == "2"] <- (diet$Herbivore[diet$Cycle == "2"])/max(diet$Herbivore) #[diet$Cycle == "2"]
+diet$Herbivore_scaled[diet$Cycle == "1"] <- (diet$Herbivore[diet$Cycle == "1"])/max(diet$Herbivore) #[diet$Cycle == "1"]
+diet$Omnivore_scaled <- diet$Omnivore
+diet$Omnivore_scaled[diet$Cycle == "4"] <- (diet$Omnivore[diet$Cycle == "4"])/max(diet$Omnivore) #[diet$Cycle == "4"]
+diet$Omnivore_scaled[diet$Cycle == "3"] <- (diet$Omnivore[diet$Cycle == "3"])/max(diet$Omnivore) #[diet$Cycle == "3"]
+diet$Omnivore_scaled[diet$Cycle == "2"] <- (diet$Omnivore[diet$Cycle == "2"])/max(diet$Omnivore) #[diet$Cycle == "2"]
+diet$Omnivore_scaled[diet$Cycle == "1"] <- (diet$Omnivore[diet$Cycle == "1"])/max(diet$Omnivore) #[diet$Cycle == "1"]
+
+
+diet_clean_matrix <- diet[,c("Row.names", "Omnivore", "Herbivore", "Carnivore", "Omnivore_scaled", "Herbivore_scaled", "Carnivore_scaled", "Diel", "Cycle", "Net", "Depth", "depthmean")]
+
+#melt together
+melteddiet <- melt(diet_clean_matrix, id = c("Row.names", "Cycle", "Net", "depthmean", "Diel"))
+melteddiet$facetvar <- "Taxa"
+
+meltedenviro <- melt(cyc_avgs[,c("unique", "Cycle", "Net", "Pressure", "Fluor", "Fluor_scaled", "LightExt", "LightExt_scaled")], id = c("unique", "Cycle", "Net", "Pressure"))
+colnames(meltedenviro) <- c("Row.names", "Cycle", "Net", "depthmean", "variable", "value")
+meltedenviro <- meltedenviro[meltedenviro$depthmean %in% c(seq(from = 0, to = 400, by = 5)),]
+meltedenviro$Diel <- "day"
+meltedenviro$facetvar <- "Enviro"
+meltedenvironight <- meltedenviro
+meltedenvironight$Diel <- "night"
+
+meltedtogether <- rbind(meltedenviro, meltedenvironight)
+meltedtogether <- rbind(meltedtogether, melteddiet)
+meltedtogether <- meltedtogether[meltedtogether$variable %in% c("Omnivore_scaled", "Herbivore_scaled", "Carnivore_scaled", "Fluor_scaled", "LightExt_scaled"),]
+meltedtogether$facetvarunique <- paste(meltedtogether$facetvar, meltedtogether$Cycle)
+meltedtogether$facetvarunique_factor <- factor(meltedtogether$facetvarunique, levels = c("Enviro 1", "Taxa 1", "Enviro 2", "Taxa 2", "Enviro 3", "Taxa 3", "Enviro 4", "Taxa 4"))
+meltedtogether$variable_factor <- factor(meltedtogether$variable, levels = c("Carnivore_scaled", "Herbivore_scaled", "Omnivore_scaled", "Fluor_scaled", "LightExt_scaled"))
+meltedtogether$value_num <- as.numeric(meltedtogether$value) 
+
+
+# add grey background
+## we only want one box per panel - and only at night - the rest are NA
+meltedtogether$shading_min_x <- NA
+meltedtogether$shading_max_x <- NA
+meltedtogether$shading_min_y <- NA
+meltedtogether$shading_max_y <- NA
+
+#add grey background
+meltedtogether$shading_min_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[1]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[1])])-1))
+meltedtogether$shading_min_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[2]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[2])])-1))
+meltedtogether$shading_min_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[3]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[3])])-1))
+meltedtogether$shading_min_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[4]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[4])])-1))
+meltedtogether$shading_min_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[5]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[5])])-1))
+meltedtogether$shading_min_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[6]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[6])])-1))
+meltedtogether$shading_min_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[7]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[7])])-1))
+meltedtogether$shading_min_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[8]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[8])])-1))
+
+meltedtogether$shading_max_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[1]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[1])])-1))
+meltedtogether$shading_max_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[2]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[2])])-1))
+meltedtogether$shading_max_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[3]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[3])])-1))
+meltedtogether$shading_max_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[4]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[4])])-1))
+meltedtogether$shading_max_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[5]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[5])])-1))
+meltedtogether$shading_max_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[6]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[6])])-1))
+meltedtogether$shading_max_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[7]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[7])])-1))
+meltedtogether$shading_max_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[8]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[8])])-1))
+
+meltedtogether$shading_min_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[1]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[1])])-1))
+meltedtogether$shading_min_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[2]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[2])])-1))
+meltedtogether$shading_min_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[3]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[3])])-1))
+meltedtogether$shading_min_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[4]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[4])])-1))
+meltedtogether$shading_min_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[5]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[5])])-1))
+meltedtogether$shading_min_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[6]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[6])])-1))
+meltedtogether$shading_min_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[7]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[7])])-1))
+meltedtogether$shading_min_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[8]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[8])])-1))
+
+meltedtogether$shading_max_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[1]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[1])])-1))
+meltedtogether$shading_max_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[2]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[2])])-1))
+meltedtogether$shading_max_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[3]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[3])])-1))
+meltedtogether$shading_max_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[4]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[4])])-1))
+meltedtogether$shading_max_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[5]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[5])])-1))
+meltedtogether$shading_max_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[6]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[6])])-1))
+meltedtogether$shading_max_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[7]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[7])])-1))
+meltedtogether$shading_max_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[8]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[8])])-1))
+
+
+
+p <- ggplot(data = meltedtogether) + 
+  #geom_rect(aes(xmin =shading_min_x, xmax = shading_max_x, 
+  #                   ymin =shading_min_y, ymax = shading_max_y), fill = "grey50", alpha = 0.4) +
+  geom_line(aes(y=value_num, x = depthmean, group = variable_factor, color = variable_factor, size = variable_factor)) + 
+  geom_point(aes(y=value_num, x = depthmean, group = variable_factor, color = variable_factor, shape = variable_factor)) + 
+  theme_bw() + 
+  facet_grid(Diel~facetvarunique_factor) + 
+  scale_size_manual(values = c(0.8, 0.8, 0.4, 0.4, 0.4), guide = "none") + 
+  scale_shape_manual(values = c(16, 16, 16, NA, NA),
+                     breaks = c("Carnivore_scaled", "Herbivore_scaled", "Omnivore_scaled", "Fluor_scaled", "LightExt_scaled"),
+                      labels = c("Carnivores", "Herbivores", "Omnivores", "Fluorescence", "Light Exctinction"),
+                     guide = "none") + #, guide = "none"
+  scale_colour_manual(values = c( "#F8766D", "#619CFF",  "#C77CFF", "#00BA38", "grey1"),
+                      breaks=c('Carnivore_scaled', 'Herbivore_scaled', 'Omnivore_scaled', 'Fluor_scaled', 'LightExt_scaled'),
+                      labels = c("Carnivores", "Herbivores", "Omnivores", expression(paste("Chlorophyll-",  "\u03B1", sep = "")), "Light Exctinction"),
+                      name = "Environmental \nVariable \nDietary Trait") +
+  guides(color = guide_legend(override.aes = list(
+                         linetype = c("solid", "solid", "solid", "solid", "solid"),
+                         shape = c(16, 16, 16, NA,NA)))) + 
+    theme(axis.text.x = element_text(angle = 90),
+          legend.text.align = 0) +
+  scale_y_continuous(breaks = scales::breaks_pretty(n = 3)) +
+  scale_x_reverse() + 
+  coord_flip() + 
+  xlab("Depth (m)") + 
+  ylab("Proportion of Maximum")  + theme(strip.text = element_blank()) 
+p
+
+meltedtogether_taxaCOI <- meltedtogether[meltedtogether$facetvar == "Taxa",]
+meltedtogether_COI <- meltedtogether
+p_Diet <- ggplot(data = meltedtogether_taxaCOI) + 
+  geom_rect(aes(xmin =shading_min_x, xmax = shading_max_x, 
+                     ymin =shading_min_y, ymax = shading_max_y), fill = "grey50", alpha = 0.4) +
+  geom_line(aes(y=value_num, x = depthmean, group = variable_factor, color = variable_factor)) + 
+  geom_point(aes(y=value_num, x = depthmean, group = variable_factor, color = variable_factor, shape = variable_factor)) + 
+    scale_color_manual(values = c("#0000CD", "#CD2626", "#9A32CD", "#FF7F24", "#006400", "#6B6B6B"), name = "Diet") +
+  scale_shape_manual(values = c(15, 16, 17, 18, NA, NA), name = "Diet") + 
+  theme_bw() + 
+  facet_grid(Diel~facetvarunique_factor) + 
+  scale_size_manual(values = c(0.8, 0.8, 0.4, 0.4, 0.4), guide = "none") + 
+    theme(axis.text.x = element_text(angle = 90),
+          legend.text.align = 0) +
+  scale_y_continuous(breaks = scales::breaks_pretty(n = 3)) +
+  scale_x_reverse() + 
+  coord_flip() + 
+  xlab("Depth (m)") + 
+  ylab("Proportion of Maximum")  + theme(strip.text = element_blank()) 
+p_Diet
+
+
+```
+
+```{r 18S diet vertical}
+Dietplot <- ZHAN
+
+#relable empty diet slots as unkown
+tax_table(Dietplot)[,16][tax_table(Dietplot)[,16]=="NA"] <- NA
+tax_table(Dietplot)[,16][is.na(tax_table(Dietplot)[,16])] <- "Unknown"
+
+#remove unknowns
+nounknowndiets <- subset_taxa(Dietplot, Diet != "Unknown")
+
+#subset the tax table and glom by trait
+tax_table(nounknowndiets) <- tax_table(nounknowndiets)[,c("Diet", "FeedingBehavior")]
+Dietplot_corrmat <- tax_glom(nounknowndiets)
+
+#rename the gloms to their diet mode
+taxa_names(Dietplot_corrmat) <- tax_table(Dietplot_corrmat)[,c("Diet")]
+taxa_names(Dietplot_corrmat)
+dietsampledat <- data.frame(sample_data(Dietplot_corrmat))
+dietdat <- data.frame(otu_table(transform_sample_counts(Dietplot_corrmat, function(x) x / sum(x) )))
+diet <- merge(dietsampledat, dietdat, by = 'row.names')
+
+
+#scale to maximum observed within each type, to look at relative shifts
+cyc_avgs$Fluor_scaled <- cyc_avgs$Fluor
+cyc_avgs$Fluor_scaled[cyc_avgs$Cycle == 1] <- (cyc_avgs$Fluor[cyc_avgs$Cycle == 1])/max(cyc_avgs$Fluor[cyc_avgs$Cycle == 1]) #[cyc_avgs$Cycle == 1]
+cyc_avgs$Fluor_scaled[cyc_avgs$Cycle == 2] <- (cyc_avgs$Fluor[cyc_avgs$Cycle == 2])/max(cyc_avgs$Fluor[cyc_avgs$Cycle == 2]) #[cyc_avgs$Cycle == 2]
+cyc_avgs$Fluor_scaled[cyc_avgs$Cycle == 3] <- (cyc_avgs$Fluor[cyc_avgs$Cycle == 3])/max(cyc_avgs$Fluor[cyc_avgs$Cycle == 3]) #[cyc_avgs$Cycle == 3]
+cyc_avgs$Fluor_scaled[cyc_avgs$Cycle == 4] <- (cyc_avgs$Fluor[cyc_avgs$Cycle == 4])/max(cyc_avgs$Fluor[cyc_avgs$Cycle == 4]) #[cyc_avgs$Cycle == 4]
+cyc_avgs$LightExt_scaled <- cyc_avgs$LightExt
+cyc_avgs$LightExt_scaled[cyc_avgs$Cycle == 1] <- (cyc_avgs$LightExt[cyc_avgs$Cycle == 1])/max(cyc_avgs$LightExt[cyc_avgs$Cycle == 1]) #[cyc_avgs$Cycle == 1]
+cyc_avgs$LightExt_scaled[cyc_avgs$Cycle == 2] <- (cyc_avgs$LightExt[cyc_avgs$Cycle == 2])/max(cyc_avgs$LightExt[cyc_avgs$Cycle == 2]) #[cyc_avgs$Cycle == 2]
+cyc_avgs$LightExt_scaled[cyc_avgs$Cycle == 3] <- (cyc_avgs$LightExt[cyc_avgs$Cycle == 3])/max(cyc_avgs$LightExt[cyc_avgs$Cycle == 3]) #[cyc_avgs$Cycle == 3]
+cyc_avgs$LightExt_scaled[cyc_avgs$Cycle == 4] <- (cyc_avgs$LightExt[cyc_avgs$Cycle == 4])/max(cyc_avgs$LightExt[cyc_avgs$Cycle == 4]) #[cyc_avgs$Cycle == 4]
+diet$Carnivore_scaled <- diet$Carnivore
+diet$Carnivore_scaled[diet$Cycle == "4"] <- (diet$Carnivore[diet$Cycle == "4"])/max(diet$Carnivore) #[diet$Cycle == "4"]
+diet$Carnivore_scaled[diet$Cycle == "3"] <- (diet$Carnivore[diet$Cycle == "3"])/max(diet$Carnivore) #[diet$Cycle == "3"]
+diet$Carnivore_scaled[diet$Cycle == "2"] <- (diet$Carnivore[diet$Cycle == "2"])/max(diet$Carnivore) #[diet$Cycle == "2"]
+diet$Carnivore_scaled[diet$Cycle == "1"] <- (diet$Carnivore[diet$Cycle == "1"])/max(diet$Carnivore) #[diet$Cycle == "1"]
+diet$Herbivore_scaled <- diet$Herbivore
+diet$Herbivore_scaled[diet$Cycle == "4"] <- (diet$Herbivore[diet$Cycle == "4"])/max(diet$Herbivore) #[diet$Cycle == "4"]
+diet$Herbivore_scaled[diet$Cycle == "3"] <- (diet$Herbivore[diet$Cycle == "3"])/max(diet$Herbivore) #[diet$Cycle == "3"]
+diet$Herbivore_scaled[diet$Cycle == "2"] <- (diet$Herbivore[diet$Cycle == "2"])/max(diet$Herbivore) #[diet$Cycle == "2"]
+diet$Herbivore_scaled[diet$Cycle == "1"] <- (diet$Herbivore[diet$Cycle == "1"])/max(diet$Herbivore) #[diet$Cycle == "1"]
+diet$Omnivore_scaled <- diet$Omnivore
+diet$Omnivore_scaled[diet$Cycle == "4"] <- (diet$Omnivore[diet$Cycle == "4"])/max(diet$Omnivore) #[diet$Cycle == "4"]
+diet$Omnivore_scaled[diet$Cycle == "3"] <- (diet$Omnivore[diet$Cycle == "3"])/max(diet$Omnivore) #[diet$Cycle == "3"]
+diet$Omnivore_scaled[diet$Cycle == "2"] <- (diet$Omnivore[diet$Cycle == "2"])/max(diet$Omnivore) #[diet$Cycle == "2"]
+diet$Omnivore_scaled[diet$Cycle == "1"] <- (diet$Omnivore[diet$Cycle == "1"])/max(diet$Omnivore) #[diet$Cycle == "1"]
+
+
+diet_clean_matrix <- diet[,c("Row.names", "Omnivore", "Herbivore", "Carnivore", "Omnivore_scaled", "Herbivore_scaled", "Carnivore_scaled", "Diel", "Cycle", "Net", "Depth", "depthmean")]
+#melt together
+melteddiet <- melt(diet_clean_matrix, id = c("Row.names", "Cycle", "Net", "depthmean", "Diel"))
+melteddiet$facetvar <- "Taxa"
+
+meltedenviro <- melt(cyc_avgs[,c("unique", "Cycle", "Net", "Pressure", "Fluor", "Fluor_scaled", "LightExt", "LightExt_scaled")], id = c("unique", "Cycle", "Net", "Pressure"))
+colnames(meltedenviro) <- c("Row.names", "Cycle", "Net", "depthmean", "variable", "value")
+meltedenviro <- meltedenviro[meltedenviro$depthmean %in% c(seq(from = 0, to = 400, by = 5)),]
+meltedenviro$Diel <- "day"
+meltedenviro$facetvar <- "Enviro"
+meltedenvironight <- meltedenviro
+meltedenvironight$Diel <- "night"
+
+meltedtogether <- rbind(meltedenviro, meltedenvironight)
+meltedtogether <- rbind(meltedtogether, melteddiet)
+meltedtogether <- meltedtogether[meltedtogether$variable %in% c("Omnivore_scaled", "Herbivore_scaled", "Carnivore_scaled", "Fluor_scaled", "LightExt_scaled"),]
+meltedtogether$facetvarunique <- paste(meltedtogether$facetvar, meltedtogether$Cycle)
+meltedtogether$facetvarunique_factor <- factor(meltedtogether$facetvarunique, levels = c("Enviro 1", "Taxa 1", "Enviro 2", "Taxa 2", "Enviro 3", "Taxa 3", "Enviro 4", "Taxa 4"))
+meltedtogether$variable_factor <- factor(meltedtogether$variable, levels = c("Carnivore_scaled", "Herbivore_scaled", "Omnivore_scaled", "Fluor_scaled", "LightExt_scaled"))
+meltedtogether$value_num <- as.numeric(meltedtogether$value) 
+
+
+# add grey background
+## we only want one box per panel - and only at night - the rest are NA
+meltedtogether$shading_min_x <- NA
+meltedtogether$shading_max_x <- NA
+meltedtogether$shading_min_y <- NA
+meltedtogether$shading_max_y <- NA
+
+#add grey background
+meltedtogether$shading_min_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[1]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[1])])-1))
+meltedtogether$shading_min_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[2]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[2])])-1))
+meltedtogether$shading_min_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[3]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[3])])-1))
+meltedtogether$shading_min_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[4]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[4])])-1))
+meltedtogether$shading_min_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[5]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[5])])-1))
+meltedtogether$shading_min_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[6]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[6])])-1))
+meltedtogether$shading_min_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[7]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[7])])-1))
+meltedtogether$shading_min_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[8]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[8])])-1))
+
+meltedtogether$shading_max_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[1]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[1])])-1))
+meltedtogether$shading_max_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[2]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[2])])-1))
+meltedtogether$shading_max_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[3]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[3])])-1))
+meltedtogether$shading_max_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[4]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[4])])-1))
+meltedtogether$shading_max_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[5]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[5])])-1))
+meltedtogether$shading_max_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[6]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[6])])-1))
+meltedtogether$shading_max_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[7]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[7])])-1))
+meltedtogether$shading_max_x[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[8]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_x[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[8])])-1))
+
+meltedtogether$shading_min_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[1]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[1])])-1))
+meltedtogether$shading_min_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[2]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[2])])-1))
+meltedtogether$shading_min_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[3]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[3])])-1))
+meltedtogether$shading_min_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[4]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[4])])-1))
+meltedtogether$shading_min_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[5]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[5])])-1))
+meltedtogether$shading_min_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[6]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[6])])-1))
+meltedtogether$shading_min_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[7]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[7])])-1))
+meltedtogether$shading_min_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[8]] <- c(-Inf, rep(NA, length(meltedtogether$shading_min_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[8])])-1))
+
+meltedtogether$shading_max_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[1]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[1])])-1))
+meltedtogether$shading_max_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[2]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[2])])-1))
+meltedtogether$shading_max_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[3]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[3])])-1))
+meltedtogether$shading_max_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[4]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[4])])-1))
+meltedtogether$shading_max_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[5]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[5])])-1))
+meltedtogether$shading_max_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[6]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[6])])-1))
+meltedtogether$shading_max_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[7]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[7])])-1))
+meltedtogether$shading_max_y[meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[8]] <- c(Inf, rep(NA, length(meltedtogether$shading_max_y[(meltedtogether$Diel == "night" & meltedtogether$facetvarunique == unique(meltedtogether$facetvarunique)[8])])-1))
+
+
+p <- ggplot(data = meltedtogether) + 
+  geom_rect(aes(xmin =shading_min_x, xmax = shading_max_x, 
+                     ymin =shading_min_y, ymax = shading_max_y), fill = "grey50", alpha = 0.4) +
+  geom_line(aes(y=value_num, x = depthmean, group = variable_factor, color = variable_factor, size = variable_factor)) + 
+  geom_point(aes(y=value_num, x = depthmean, group = variable_factor, color = variable_factor, shape = variable_factor)) + 
+  theme_bw() + 
+  facet_grid(Diel~facetvarunique_factor) + 
+  scale_size_manual(values = c(0.8, 0.8, 0.4, 0.4, 0.4), guide = "none") + 
+  scale_shape_manual(values =c(16, 16, 16, NA, NA),
+                     breaks=c('Carnivore_scaled', 'Herbivore_scaled', 'Omnivore_scaled', 'Fluor_scaled', 'LightExt_scaled'),
+                      labels = c("Carnivores", "Herbivores", "Omnivores", "Fluorescence", "Light Exctinction"),
+                     guide = "none") + #, guide = "none"
+  scale_colour_manual(values = c( "#F8766D", "#619CFF",  "#C77CFF", "#00BA38", "grey1"),
+                      breaks=c('Carnivore_scaled', 'Herbivore_scaled', 'Omnivore_scaled', 'Fluor_scaled', 'LightExt_scaled'),
+                      labels = c("Carnivores", "Herbivores", "Omnivores", expression(paste("Chlorophyll-",  "\u03B1", sep = "")), "Light Exctinction"),
+                      name = "Environmental \nVariable \nDietary Trait") +
+  guides(color = guide_legend(override.aes = list(
+                         linetype = c("solid", "solid", "solid", "solid", "solid"),
+                         shape = c(16, 16, 16, NA,NA)))) + 
+    theme(axis.text.x = element_text(angle = 90),
+          legend.text.align = 0) +
+  scale_y_continuous(breaks = scales::breaks_pretty(n = 3)) +
+  scale_x_reverse() + 
+  coord_flip() + 
+  xlab("Depth (m)") + 
+  ylab("Proportion of Maximum")  + theme(strip.text = element_blank()) 
+p
+
+meltedtogether_taxa18S <- meltedtogether[meltedtogether$facetvar == "Taxa",]
+meltedtogether_18S <- meltedtogether
+p_Diet_18S <- ggplot(data = meltedtogether_taxa18S) + 
+  geom_rect(aes(xmin =shading_min_x, xmax = shading_max_x, 
+                     ymin =shading_min_y, ymax = shading_max_y), fill = "grey50", alpha = 0.4) +
+  geom_line(aes(y=value_num, x = depthmean, group = variable_factor, color = variable_factor)) + 
+  geom_point(aes(y=value_num, x = depthmean, group = variable_factor, color = variable_factor, shape = variable_factor)) + 
+    scale_color_manual(values = c("#0000CD", "#CD2626", "#9A32CD", "#FF7F24", "#006400", "#6B6B6B"), name = "Diet") +
+    scale_shape_manual(values = c(15, 16, 17, 18, NA, NA), name = "Diet") + 
+theme_bw() + 
+  facet_grid(Diel~facetvarunique_factor) + 
+  scale_y_continuous(breaks = scales::breaks_pretty(n = 3)) +
+  scale_x_reverse() + 
+  coord_flip() + 
+  xlab("Depth (m)") + 
+  ylab("Proportion of Maximum")  + theme(strip.text = element_blank()) 
+p_Diet_18S
+
+
+```
+
+```{r Diet plot both markers together vertical}
+meltedtogether_COI$Marker <- "COI"
+meltedtogether_18S$Marker <- "18S"
+p_Dietboth <- ggplot(data = meltedtogether_18S) + 
+  geom_rect(aes(xmin =shading_min_x, xmax = shading_max_x, 
+                     ymin =shading_min_y, ymax = shading_max_y), fill = "grey50", alpha = 0.4) +
+  geom_line(data = meltedtogether_18S, aes(y=value_num, x = depthmean, group = variable_factor, color = variable_factor, linetype = Marker)) + 
+  geom_point(data = meltedtogether_18S, aes(y=value_num, x = depthmean, group = variable_factor, color = variable_factor, shape = variable_factor)) + 
+  geom_line(data = meltedtogether_COI, aes(y=value_num, x = depthmean, group = variable_factor, color = variable_factor, linetype = Marker)) + 
+  geom_point(data = meltedtogether_COI, aes(y=value_num, x = depthmean, group = variable_factor, color = variable_factor, shape = variable_factor)) + 
+    scale_color_manual(values = c("#CD2626", "#228B22", "#9A32CD", "#FF7F24", "#8B8378"), name = "Diet", labels = c("Carnivore", "Herbivore", "Omnivore", "Fluorescence", "Light Ext.")) + #c("#0000CD", "#CD2626", "#9A32CD", "#FF7F24", "#6B6B6B", "#006400")
+  scale_shape_manual(values = c(15, 16, 17, NA, NA), name = "Diet", labels = c("Carnivore", "Herbivore", "Omnivore", "Fluorescence", "Light Ext.")) + 
+  scale_linetype_manual(values=c("COI"=1,"18S"=6), name = "Marker") + 
+  theme_bw() + 
+  facet_grid(Diel~facetvarunique_factor) + 
+    theme(axis.text.x = element_text(angle = 90),
+          legend.text.align = 0) +
+  scale_y_continuous(breaks = scales::breaks_pretty(n = 3)) +
+  scale_x_reverse() + 
+  coord_flip() + 
+  xlab("Depth (m)") + 
+  ylab("Proportion of Maximum")  + theme(strip.text = element_blank()) 
+p_Dietboth
+
+gp <- ggplotGrob(p_Dietboth)
+
+# optional: take a look at the grob object's layout
+gtable::gtable_show_layout(gp)
+
+# get gtable columns corresponding to the facets (5 & 9, in this case)
+facet.columns <- gp$layout$l[grepl("panel", gp$layout$name)]
+break.columns <- gp$layout$l[grepl("strip", gp$layout$name)]
+
+#facet.columns <- c(5,7,9,11,13,15,17,19)
+
+# get the number of unique x-axis values per facet (1 & 3, in this case)
+x.var <- sapply(ggplot_build(p)$layout$panel_scales_x,
+                function(l) length(l$range$range))
+x.var <- c(1,3,1,3,1,3,1,3)
+x.var <- c(1,1,3,3,1,1,3,3,1,1,3,3,1,1,3,3) #change sizes of panels 
+
+b.var <- c(1,1,2,1,2,1,2,1,1,1) #change sizes of breaks
+
+# change the relative widths of the facet columns based on
+# how many unique x-axis values are in each facet
+gp$widths[facet.columns] <- gp$widths[facet.columns] * x.var
+#gp$widths[break.columns] <- gp$widths[break.columns] * b.var
+
+# plot result
+
+grid::grid.draw(gp)
+
+#gt = ggplot_gtable(ggplot_build(gp))
+gt <- gp
+gt$widths[8] = 3*gt$widths[8]
+gt$widths[12] = 3*gt$widths[12]
+gt$widths[16] = 3*gt$widths[16]
+grid::grid.draw(gt)
+
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/VertDistbyDietbothmarkers_enviro.pdf", height =4.8, width = 8.5)
+grid::grid.draw(gt)
+dev.off()
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/VertDistbyDietbothmarkers_enviro.jpeg", height =4.8, width = 8.5, unit = "in", quality = 100, res = 300)
+grid::grid.draw(gt)
+dev.off()
+```
+
+```{r plot both markers without environment}
+meltedtogether_taxaCOI <- meltedtogether_COI[meltedtogether_COI$facetvar == "Taxa",]
+meltedtogether_taxa18S <- meltedtogether_18S[meltedtogether_18S$facetvar == "Taxa",]
+
+meltedtogether_taxaCOI$facet8 <- NA
+meltedtogether_taxaCOI$facet8[meltedtogether_taxaCOI$facetvarunique == "Taxa 1" & meltedtogether_taxaCOI$Diel == "day"] <- "Cycle 1 Day"
+meltedtogether_taxaCOI$facet8[meltedtogether_taxaCOI$facetvarunique == "Taxa 2" & meltedtogether_taxaCOI$Diel == "day"] <- "Cycle 2 Day"
+meltedtogether_taxaCOI$facet8[meltedtogether_taxaCOI$facetvarunique == "Taxa 3" & meltedtogether_taxaCOI$Diel == "day"] <- "Cycle 3 Day"
+meltedtogether_taxaCOI$facet8[meltedtogether_taxaCOI$facetvarunique == "Taxa 4" & meltedtogether_taxaCOI$Diel == "day"] <- "Cycle 4 Day"
+meltedtogether_taxaCOI$facet8[meltedtogether_taxaCOI$facetvarunique == "Taxa 1" & meltedtogether_taxaCOI$Diel == "night"] <- "Cycle 1 Night"
+meltedtogether_taxaCOI$facet8[meltedtogether_taxaCOI$facetvarunique == "Taxa 2" & meltedtogether_taxaCOI$Diel == "night"] <- "Cycle 2 Night"
+meltedtogether_taxaCOI$facet8[meltedtogether_taxaCOI$facetvarunique == "Taxa 3" & meltedtogether_taxaCOI$Diel == "night"] <- "Cycle 3 Night"
+meltedtogether_taxaCOI$facet8[meltedtogether_taxaCOI$facetvarunique == "Taxa 4" & meltedtogether_taxaCOI$Diel == "night"] <- "Cycle 4 Night"
+meltedtogether_taxaCOI$facet8 <- factor(meltedtogether_taxaCOI$facet8, levels = c("Cycle 1 Day", "Cycle 2 Day", "Cycle 3 Day", "Cycle 4 Day", "Cycle 1 Night", "Cycle 2 Night", "Cycle 3 Night", "Cycle 4 Night"))
+
+meltedtogether_taxa18S$facet8 <- NA
+meltedtogether_taxa18S$facet8[meltedtogether_taxa18S$facetvarunique == "Taxa 1" & meltedtogether_taxa18S$Diel == "day"] <- "Cycle 1 Day"
+meltedtogether_taxa18S$facet8[meltedtogether_taxa18S$facetvarunique == "Taxa 2" & meltedtogether_taxa18S$Diel == "day"] <- "Cycle 2 Day"
+meltedtogether_taxa18S$facet8[meltedtogether_taxa18S$facetvarunique == "Taxa 3" & meltedtogether_taxa18S$Diel == "day"] <- "Cycle 3 Day"
+meltedtogether_taxa18S$facet8[meltedtogether_taxa18S$facetvarunique == "Taxa 4" & meltedtogether_taxa18S$Diel == "day"] <- "Cycle 4 Day"
+meltedtogether_taxa18S$facet8[meltedtogether_taxa18S$facetvarunique == "Taxa 1" & meltedtogether_taxa18S$Diel == "night"] <- "Cycle 1 Night"
+meltedtogether_taxa18S$facet8[meltedtogether_taxa18S$facetvarunique == "Taxa 2" & meltedtogether_taxa18S$Diel == "night"] <- "Cycle 2 Night"
+meltedtogether_taxa18S$facet8[meltedtogether_taxa18S$facetvarunique == "Taxa 3" & meltedtogether_taxa18S$Diel == "night"] <- "Cycle 3 Night"
+meltedtogether_taxa18S$facet8[meltedtogether_taxa18S$facetvarunique == "Taxa 4" & meltedtogether_taxa18S$Diel == "night"] <- "Cycle 4 Night"
+meltedtogether_taxa18S$facet8 <- factor(meltedtogether_taxa18S$facet8, levels = c("Cycle 1 Day", "Cycle 2 Day", "Cycle 3 Day", "Cycle 4 Day", "Cycle 1 Night", "Cycle 2 Night", "Cycle 3 Night", "Cycle 4 Night"))
+
+meltedtogether_taxaCOI$Marker <- "COI"
+meltedtogether_taxa18S$Marker <- "18S"
+p_Dietboth <- ggplot(data = meltedtogether_taxa18S) + 
+  geom_rect(aes(xmin =shading_min_x, xmax = shading_max_x, 
+                     ymin =shading_min_y, ymax = shading_max_y), fill = "grey50", alpha = 0.4) +
+  geom_line(data = meltedtogether_taxa18S, aes(y=value_num, x = depthmean, group = variable_factor, color = variable_factor, linetype = Marker)) + 
+  geom_point(data = meltedtogether_taxa18S, aes(y=value_num, x = depthmean, group = variable_factor, color = variable_factor, shape = variable_factor)) + 
+  geom_line(data = meltedtogether_taxaCOI, aes(y=value_num, x = depthmean, group = variable_factor, color = variable_factor, linetype = Marker)) + 
+  geom_point(data = meltedtogether_taxaCOI, aes(y=value_num, x = depthmean, group = variable_factor, color = variable_factor, shape = variable_factor)) + 
+    scale_color_manual(values = c("#CD2626", "#228B22", "#9A32CD", "#FF7F24", "#8B8378"), name = "Diet", labels = c("Carnivore", "Herbivore", "Omnivore", "Fluorescence", "Light Ext.")) + #c("#0000CD", "#CD2626", "#9A32CD", "#FF7F24", "#6B6B6B", "#006400")
+  scale_shape_manual(values = c(15, 16, 17, NA, NA), name = "Diet", labels = c("Carnivore", "Herbivore", "Omnivore", "Fluorescence", "Light Ext.")) + 
+  scale_linetype_manual(values=c("18S"=1,"COI"=6), name = "Marker") + 
+  theme_bw() + 
+  facet_wrap(.~facet8, nrow = 2) + 
+    theme(axis.text.x = element_text(angle = 90),
+          legend.text.align = 0) +
+  scale_y_continuous(breaks = scales::breaks_pretty(n = 3)) +
+  scale_x_reverse() + 
+  coord_flip() + 
+  xlab("Depth (m)") + 
+  ylab("Proportion of Maximum") 
+p_Dietboth
+
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/VertDistbyDietbothmarkers.pdf", height =4.8, width = 6)
+p_Dietboth
+dev.off()
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/VertDistbyDietbothmarkers.jpeg", height =4.8, width = 6, unit = "in", quality = 100, res = 300)
+p_Dietboth
+dev.off()
+```
+
+
+#> feeding behavior
+
+```{r what are these feeding behaviors?}
+scratch <- data.frame(tax_table(ZHAN))
+table(scratch$FeedingBehavior, scratch$Diet)
+
+carni.ambush <- table(scratch$Class[scratch$Diet == "Carnivore" & scratch$FeedingBehavior == "Ambush"])
+carni.cruise <- table(scratch$Class[scratch$Diet == "Carnivore" & scratch$FeedingBehavior == "Cruise"])
+carni.sus    <- table(scratch$Class[scratch$Diet == "Carnivore" & scratch$FeedingBehavior == "Suspension"])
+
+herbi.ambush <- table(scratch$Genus[scratch$Diet == "Herbivore" & scratch$FeedingBehavior == "Ambush"])
+herbi.cruise <- table(scratch$Class[scratch$Diet == "Herbivore" & scratch$FeedingBehavior == "Cruise"])
+herbi.sus    <- table(scratch$Class[scratch$Diet == "Herbivore" & scratch$FeedingBehavior == "Suspension"])
+
+omni.ambush <- table(scratch$Genus[scratch$Diet == "Omnivore" & scratch$FeedingBehavior == "Ambush"])
+omni.cruise <- table(scratch$Class[scratch$Diet == "Omnivore" & scratch$FeedingBehavior == "Cruise"])
+omni.sus    <- table(scratch$Class[scratch$Diet == "Omnivore" & scratch$FeedingBehavior == "Suspension"])
+
+#from Kiorboe 2011 How Zooplankton Feed:
+#Ambush i.e. no feeding movement until prey detected (active, passive): passive inc. ctenophores, pteropods, siphs (interception, no pursuit); active incl. chaetognaths, some copepods (prey pursued after detection)
+#Feeding Current incl. filter feeding by ciliated taxa, copepods, medusae, salps, apps, krill; scanning current by some copepods, mnemiopsis 
+#Cruise feeding with Prey detection incl. fish larvae, Clausocalanus, Metridia, 
+
+carni.ambush
+carni.cruise
+carni.sus   
+herbi.ambush
+herbi.cruise
+herbi.sus   
+omni.ambush 
+omni.cruise 
+omni.sus    
+
+
+data.frame(tax_table(ZHAN)) %>%
+  group_by(FeedingBehavior, Class) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop") %>%
+  arrange(FeedingBehavior, Class, OTUs) %>%
+  gt(rowname_col = "Class", groupname_col = "FeedingBehavior") %>%
+  tab_header(title = "Diversity within FeedingBehavior Type",
+    subtitle = "Number of OTUs within each Class and Family")%>%
+  gtsave(filename = "OTUsbyFeedingZHAN_Class.docx")
+
+data.frame(tax_table(COI)) %>%
+  group_by(FeedingBehavior, Class) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop") %>%
+  arrange(FeedingBehavior, Class, OTUs) %>%
+  gt(rowname_col = "Class", groupname_col = "FeedingBehavior") %>%
+  tab_header(title = "Diversity within FeedingBehavior Type",
+    subtitle = "Number of OTUs within each Class and Family")%>%
+  gtsave(filename = "OTUsbyFeedingCOI_Class.docx")
+
+```
+
+```{r feeding 18S}
+#merge samples by cycle
+sample_data(ZHAN)$CycleChar <- paste("Cycle", sample_data(ZHAN)$Cycle)
+ZHANcycles <- merge_samples(ZHAN, group = "CycleChar", fun = sum)
+
+# merge taxa by transparency
+tax_table(ZHANcycles) <- tax_table(ZHANcycles)[,c("FeedingBehavior", "Transparency")]
+ZHANcycles <- tax_glom(ZHANcycles, taxrank = "FeedingBehavior")
+taxa_names(ZHANcycles) <- tax_table(ZHANcycles)[,c("FeedingBehavior")]
+
+# get otu table 
+ZHAN.feed.cycles <- data.frame(otu_table(ZHANcycles))
+ZHAN.feed.cycles$Suspension_prop <- ZHAN.feed.cycles$Suspension/(ZHAN.feed.cycles$Suspension + ZHAN.feed.cycles$Cruise + ZHAN.feed.cycles$Ambush)
+ZHAN.feed.cycles$Cruise_prop <- ZHAN.feed.cycles$Cruise/(ZHAN.feed.cycles$Suspension + ZHAN.feed.cycles$Cruise + ZHAN.feed.cycles$Ambush)
+ZHAN.feed.cycles$Ambush_prop <- ZHAN.feed.cycles$Ambush/(ZHAN.feed.cycles$Suspension + ZHAN.feed.cycles$Cruise + ZHAN.feed.cycles$Ambush)
+ZHAN.feed.cycles$Cycle <- c(1, 2, 3, 4)
+ZHAN.feed.cycles_long <- pivot_longer(ZHAN.feed.cycles, names_to = "FeedingMode", cols = c("Suspension_prop", "Cruise_prop", "Ambush_prop"))
+
+ggplot(ZHAN.feed.cycles_long) + 
+  geom_point(aes(x = Cycle, y = value, color = FeedingMode, shape = FeedingMode)) + 
+  scale_shape_manual(values = c(15, 16, 17), name = "Feeding Mode", labels = c("Ambush", "Cruise", "Suspension")) +
+  scale_color_manual(values = c("#0000EE", "#CD2626", "#9A32CD"), name = "Feeding Mode", labels = c("Ambush", "Cruise", "Suspension")) +
+ # geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Proportion reads")
+
+
+
+```
+
+
+```{r feeding COI}
+#merge samples by cycle
+sample_data(COI)$CycleChar <- paste("Cycle", sample_data(COI)$Cycle)
+COIcycles <- merge_samples(COI, group = "CycleChar", fun = sum)
+
+# merge taxa by transparency
+tax_table(COIcycles) <- tax_table(COIcycles)[,c("FeedingBehavior", "Transparency")]
+COIcycles <- tax_glom(COIcycles, taxrank = "FeedingBehavior")
+taxa_names(COIcycles) <- tax_table(COIcycles)[,c("FeedingBehavior")]
+
+# get otu table 
+COI.feed.cycles <- data.frame(otu_table(COIcycles))
+COI.feed.cycles$Suspension_prop <- COI.feed.cycles$Suspension/(COI.feed.cycles$Suspension + COI.feed.cycles$Cruise + COI.feed.cycles$Ambush +COI.feed.cycles$Parasitoid)
+COI.feed.cycles$Cruise_prop <- COI.feed.cycles$Cruise/(COI.feed.cycles$Suspension + COI.feed.cycles$Cruise + COI.feed.cycles$Ambush +COI.feed.cycles$Parasitoid)
+COI.feed.cycles$Ambush_prop <- COI.feed.cycles$Ambush/(COI.feed.cycles$Suspension + COI.feed.cycles$Cruise + COI.feed.cycles$Ambush +COI.feed.cycles$Parasitoid)
+COI.feed.cycles$Parasitoid_prop <- COI.feed.cycles$Parasitoid/(COI.feed.cycles$Suspension + COI.feed.cycles$Cruise + COI.feed.cycles$Ambush +COI.feed.cycles$Parasitoid)
+COI.feed.cycles$Cycle <- c(1, 2, 3, 4)
+COI.feed.cycles_long <- pivot_longer(COI.feed.cycles, names_to = "FeedingMode", cols = c("Suspension_prop", "Cruise_prop", "Ambush_prop", "Parasitoid_prop"))
+
+ggplot(COI.feed.cycles_long) + 
+  geom_point(aes(x = Cycle, y = value, color = FeedingMode, shape = FeedingMode)) + 
+  scale_shape_manual(values = c(15, 16, 17, 18), name = "Feeding Mode", labels = c( "Ambush", "Cruise", "Parasitoid", "Suspension")) +
+  scale_color_manual(values = c("#CD3333", "#8A2BE2", "#0000EE", "#228B22"), name = "Feeding Mode", labels = c("Ambush", "Cruise", "Parasitoid", "Suspension")) +
+ # geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Proportion of reads")
+```
+
+
+```{r feeding both}
+COI.feed.cycles_long$Marker <- "COI"
+ZHAN.feed.cycles_long$Marker <- "18S"
+ZHAN.feed.cycles_long$Parasitoid <- NA
+feedbothmarkers <- (rbind(data.frame(COI.feed.cycles_long), data.frame(ZHAN.feed.cycles_long)))
+feedbothmarkers$groupvar <- paste(feedbothmarkers$Marker, feedbothmarkers$FeedingMode)
+
+feedbothmarkersplot <- ggplot(feedbothmarkers) + 
+  geom_point(aes(x= Cycle, y = value, group = groupvar, color = FeedingMode, shape = FeedingMode), position=position_dodge(width=0.5))+
+  geom_line(aes(x= Cycle, y = value, group = groupvar, color = FeedingMode, linetype = Marker), position=position_dodge(width=0.5))+
+  scale_color_manual(values = c("#CD3333", "#8A2BE2", "#0000EE", "#228B22"), name = "Feeding Mode", labels = c("Ambush", "Cruise", "Parasitoid", "Current")) +
+  scale_shape_manual(values = c(15, 16, 17, 18), name = "Feeding Mode", labels = c("Ambush", "Cruise","Parasitoid", "Current")) +
+  ylab("Proportion of reads") + 
+  xlab("Cycle") + 
+  theme_bw() 
+feedbothmarkersplot
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/FeedingbyCycle.pdf", height =4.5, width = 8)
+feedbothmarkersplot
+dev.off()
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/FeedingbyCycle.jpeg", height =4.5, width = 8, unit = "in", quality = 100, res = 300)
+feedbothmarkersplot
+dev.off()
+```
+
+#> spawning 
+#plot proportion of of brooding
+# more common offshore in the surface? 
+
+```{r asexual 18S}
+#merge samples by cycle
+sample_data(ZHAN)$CycleChar <- paste("Cycle", sample_data(ZHAN)$Cycle)
+ZHANcycles <- merge_samples(ZHAN, group = "CycleChar", fun = sum)
+
+# merge taxa by transparency
+tax_table(ZHANcycles) <- tax_table(ZHANcycles)[,c("Spawning", "Transparency")]
+ZHANcycles <- tax_glom(ZHANcycles, taxrank = "Spawning")
+taxa_names(ZHANcycles) <- tax_table(ZHANcycles)[,c("Spawning")]
+
+# get otu table 
+ZHAN.sp.cycles <- data.frame(otu_table(ZHANcycles))
+ZHAN.sp.cycles$Spawning <- ZHAN.sp.cycles$Brooding/(ZHAN.sp.cycles$Brooding + ZHAN.sp.cycles$Broadcast)
+ZHAN.sp.cycles$Cycle <- c(1, 2, 3, 4)
+
+ggplot(ZHAN.sp.cycles) + 
+  geom_point(aes(x= Cycle, y = Spawning))+
+ # geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Proportion brooding")
+
+
+
+```
+
+```{r asexual COI}
+#merge samples by cycle
+sample_data(COI)$CycleChar <- paste("Cycle", sample_data(COI)$Cycle)
+COIcycles <- merge_samples(COI, group = "CycleChar", fun = sum)
+
+# merge taxa by transparency
+tax_table(COIcycles) <- tax_table(COIcycles)[,c("Spawning", "Transparency")]
+COIcycles <- tax_glom(COIcycles, taxrank = "Spawning")
+taxa_names(COIcycles) <- tax_table(COIcycles)[,c("Spawning")]
+
+# get otu table 
+COI.sp.cycles <- data.frame(otu_table(COIcycles))
+COI.sp.cycles$Spawning <- COI.sp.cycles$Brooding/(COI.sp.cycles$Brooding + COI.sp.cycles$Broadcast)
+COI.sp.cycles$Cycle <- c(1, 2, 3, 4)
+
+ggplot(COI.sp.cycles) + 
+  geom_point(aes(x= Cycle, y = Spawning))+
+ # geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Brooding/(Broadcast+Brooding)")
+
+```
+
+```{r asexual both}
+COI.sp.cycles$marker <- "COI"
+ZHAN.sp.cycles$marker <- "18S"
+spawnbothmarkers <- as.data.frame(rbind(COI.sp.cycles, ZHAN.sp.cycles))
+
+spawnbothmarkers <- ggplot(spawnbothmarkers) + 
+  geom_point(aes(x= Cycle, y = Spawning, group = marker, color = marker), position=position_dodge(width=0.5))+
+  geom_line(aes(x= Cycle, y = Spawning, group = marker, color = marker, linetype = marker), position=position_dodge(width=0.5))+
+  scale_color_manual(values = c("blue", "red"), name = "Marker") +
+  scale_linetype_manual(values = c(1, 3),
+                        name = c("Marker")) +
+  ylab("Proportion brooding") + 
+  xlab("Cycle") + 
+  theme_bw() 
+spawnbothmarkers
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/SpawningbyCycle.pdf", height =4.8, width = 8.5)
+spawnbothmarkers
+dev.off()
+
+```
+
+
+#> asexual repro
+
+```{r asexual 18S}
+#merge samples by cycle
+sample_data(ZHAN)$CycleChar <- paste("Cycle", sample_data(ZHAN)$Cycle)
+ZHANcycles <- merge_samples(ZHAN, group = "CycleChar", fun = sum)
+
+# merge taxa by transparency
+tax_table(ZHANcycles) <- tax_table(ZHANcycles)[,c("AsexualRepro", "Transparency")]
+ZHANcycles <- tax_glom(ZHANcycles, taxrank = "AsexualRepro")
+taxa_names(ZHANcycles) <- tax_table(ZHANcycles)[,c("AsexualRepro")]
+
+# get otu table 
+ZHAN.ar.cycles <- data.frame(otu_table(ZHANcycles))
+ZHAN.ar.cycles$PropAsexual <- ZHAN.ar.cycles$Yes/(ZHAN.ar.cycles$Yes + ZHAN.ar.cycles$No)
+ZHAN.ar.cycles$Cycle <- c(1, 2, 3, 4)
+
+ggplot(ZHAN.ar.cycles) + 
+  geom_point(aes(x= Cycle, y = PropAsexual))+
+ # geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Proportion asexual")
+
+```
+
+```{r asexual COI}
+#merge samples by cycle
+sample_data(COI)$CycleChar <- paste("Cycle", sample_data(COI)$Cycle)
+COIcycles <- merge_samples(COI, group = "CycleChar", fun = sum)
+
+# merge taxa by transparency
+tax_table(COIcycles) <- tax_table(COIcycles)[,c("AsexualRepro", "Transparency")]
+COIcycles <- tax_glom(COIcycles, taxrank = "AsexualRepro")
+taxa_names(COIcycles) <- tax_table(COIcycles)[,c("AsexualRepro")]
+
+# get otu table 
+COI.ar.cycles <- data.frame(otu_table(COIcycles))
+COI.ar.cycles$PropAsexual <- COI.ar.cycles$Yes/(COI.ar.cycles$Yes + COI.ar.cycles$No)
+COI.ar.cycles$Cycle <- c(1, 2, 3, 4)
+
+ggplot(COI.ar.cycles) + 
+  geom_point(aes(x= Cycle, y = PropAsexual))+
+ # geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Proportion DVM")
+
+```
+
+```{r asexual both}
+COI.ar.cycles$marker <- "COI"
+ZHAN.ar.cycles$marker <- "18S"
+ARbothmarkers <- rbind(COI.ar.cycles, ZHAN.ar.cycles)
+
+asexualbothmarkers <- ggplot(ARbothmarkers) + 
+  geom_point(aes(x= Cycle, y = PropAsexual, group = marker, color = marker), position=position_dodge(width=0.5))+
+    geom_line(aes(x= Cycle, y = PropAsexual, group = marker, color = marker, linetype = marker), position=position_dodge(width=0.5))+
+  scale_color_manual(values = c("blue", "red"), name = "Marker") +
+  scale_linetype_manual(values = c(1, 3),
+                        name = c("Marker")) +
+  ylab("Proportion asexual") + 
+  xlab("Cycle") + 
+  theme_bw() 
+asexualbothmarkers
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/PresofAsexReprobyCycle.pdf", height =4.8, width = 8.5)
+asexualbothmarkers
+dev.off()
+```
+i need to look into what taxa are different between 18s and coi here - why is cycle 3 so much higher? 
+
+
+#> carbon
+
+
+```{r carbon both}
+#merge samples by cycle
+sample_data(COI)$CycleChar <- paste("Cycle", sample_data(COI)$Cycle)
+COIcycles <- merge_samples(COI, group = "CycleChar", fun = sum)
+
+# merge taxa by transparency
+tax_table(COIcycles) <- tax_table(COIcycles)[,c("Carbon", "Transparency")]
+COIcycles <- tax_glom(COIcycles, taxrank = "Carbon")
+taxa_names(COIcycles) <- tax_table(COIcycles)[,c("Carbon")]
+
+# convert to relative abundance
+COIcyclesra <- transform_sample_counts(COIcycles, function(x) x / sum(x) )
+sample_names(COIcyclesra) <- c("1", "2", "3", "4")
+coicarbon <- plot_bar(COIcyclesra, fill = "Carbon") + 
+  theme_bw() + 
+  scale_fill_manual(values = c("#030303", "#999999", "#DBDBDB"), labels = c("Gel.", "Int.", "Non-Gel.")) + 
+  xlab(NULL) + 
+  ylab(NULL) 
+  
+
+#merge samples by cycle
+sample_data(ZHAN)$CycleChar <- paste("Cycle", sample_data(ZHAN)$Cycle)
+ZHANcycles <- merge_samples(ZHAN, group = "CycleChar", fun = sum)
+
+# merge taxa by transparency
+tax_table(ZHANcycles) <- tax_table(ZHANcycles)[,c("Carbon", "Transparency")]
+ZHANcycles <- tax_glom(ZHANcycles, taxrank = "Carbon")
+taxa_names(ZHANcycles) <- tax_table(ZHANcycles)[,c("Carbon")]
+
+# convert to relative abundance
+ZHANcyclesra <- transform_sample_counts(ZHANcycles, function(x) x / sum(x) )
+sample_names(ZHANcyclesra) <- c("1", "2", "3", "4")
+zhancarbon <- plot_bar(ZHANcyclesra, fill = "Carbon") + 
+  theme_bw() + 
+  scale_fill_manual(values = c("#030303", "#999999", "#DBDBDB"), labels = c("Gel.", "Int.", "Non-Gel.")) + 
+  xlab(NULL) + 
+  ylab(NULL) 
+
+bothcarbon <- ggarrange(zhancarbon+xlab(NULL)+ylab(NULL), coicarbon+ylab(NULL), ncol = 1, nrow = 2, common.legend = T, legend = "right", align = "hv")
+bothcarbonlab <- annotate_figure(bothcarbon, left = text_grob("Relative abundance", rot = 90), bottom = text_grob("Cycle", rot = 0))
+#bothcarbonlab <- annotate_figure(bothcarbon, )
+bothcarbon
+  
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/carbon.pdf", height =4.8, width = 8.5)
+bothcarbonlab
+dev.off()
+
+```
+
+
+```{r carbon together}
+
+
+#used psmelt
+ZHANcarbdf <- psmelt(ZHANcyclesra)
+COIcarbdf <- psmelt(COIcyclesra)
+ZHANcarbdf$Marker <- "18S"
+COIcarbdf$Marker <- "COI"
+
+carbondf <- rbind(ZHANcarbdf[,c("Sample", "Abundance", "Carbon", "Marker")], COIcarbdf[,c("Sample", "Abundance", "Carbon", "Marker")])
+carbondf$Unique <- paste(carbondf$Carbon, carbondf$Marker)
+
+carboncols <- c("#E6E7FA", "#1822F0", "#0C1085", "#F7D7D7", "#EB2C2C", "#A30D0D", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF")
+names(carboncols) <- c(unique(carbondf$Unique)[c(2,3,1,5,6,4)], "fill1", "fill2", "fill3", "fill4", "fill5")
+carboncols <- carboncols[c(1,2,3,7,8,9,10,11,4,5,6)]
+
+carboncols <- c("#E6E7FA", "#1822F0", "#0C1085", "#F7D7D7", "#EB2C2C", "#A30D0D", "#FFFFFF")
+names(carboncols) <- c(unique(carbondf$Unique)[c(2,3,1,5,6,4)], "fill1")
+carboncols <- carboncols[c(1,2,3,7,4,5,6)]
+
+#worked
+bothCarbon <- ggplot(carbondf[order(carbondf$Marker),], aes(x=Sample, y=Abundance, fill=Unique)) + 
+  geom_bar(stat = "identity")+ 
+  xlab("Cycle") + 
+  ylab("Proportion of reads") + 
+  facet_wrap(.~Marker, nrow=2) + theme_bw() + 
+  scale_fill_manual(values = carboncols, labels = c("Gel.", "Int.", "Non-Gel.", " ","Gel.", "Int.", "Non-Gel."), name = "Carbon")  +
+  theme(strip.background = element_rect(fill = "white")
+  )
+
+bothCarbon
+
+
+
+
+```
+
+
+#> Transparency
+# does average transparency change cross-shore? 
+# weighted average by read counts
+# sum across entire water column 
+
+```{r transparency 5 categories 18S}
+#merge samples by cycle
+sample_data(ZHAN)$CycleChar <- paste("Cycle", sample_data(ZHAN)$Cycle)
+ZHANcycles <- merge_samples(ZHAN, group = "CycleChar", fun = sum)
+
+# merge taxa by transparency
+tax_table(ZHANcycles) <- tax_table(ZHANcycles)[,c("Transparency", "CalculatedDVM")]
+ZHANcycles <- tax_glom(ZHANcycles, taxrank = "Transparency")
+taxa_names(ZHANcycles) <- tax_table(ZHANcycles)[,c("Transparency")]
+
+# get otu table 
+ZHANtranscycles <- data.frame(otu_table(ZHANcycles))
+ZHANtranscycles <- ZHANtranscycles[,c("X.1", "X.2", "X.3", "X.4", "X.5")]
+ZHANtranscycles <- t(ZHANtranscycles)
+
+#1 is opaque
+#5 is transparent
+t1 <- 99.6
+t2 <- 122.9
+t3 <- 143.2
+t4 <- 165.9
+t5 <- 179.2
+transparencies <- c(99.6, 122.9, 143.2, 165.9, 179.2)
+
+
+meanintensityc1 <- (ZHANtranscycles[1,1]*t1+ZHANtranscycles[2,1]*t2+ZHANtranscycles[3,1]*t3+ZHANtranscycles[4,1]*t4+ZHANtranscycles[5,1]*t5)/sum(ZHANtranscycles[1:5,1])
+meanintensityc2 <- (ZHANtranscycles[1,2]*t1+ZHANtranscycles[2,2]*t2+ZHANtranscycles[3,2]*t3+ZHANtranscycles[4,2]*t4+ZHANtranscycles[5,2]*t5)/sum(ZHANtranscycles[1:5,2])
+meanintensityc3 <- (ZHANtranscycles[1,3]*t1+ZHANtranscycles[2,3]*t2+ZHANtranscycles[3,3]*t3+ZHANtranscycles[4,3]*t4+ZHANtranscycles[5,3]*t5)/sum(ZHANtranscycles[1:5,3])
+meanintensityc4 <- (ZHANtranscycles[1,4]*t1+ZHANtranscycles[2,4]*t2+ZHANtranscycles[3,4]*t3+ZHANtranscycles[4,4]*t4+ZHANtranscycles[5,4]*t5)/sum(ZHANtranscycles[1:5,4])
+
+
+wtdmean.c1 <- weighted.mean(transparencies, ZHANtranscycles[,1])
+wtdmean.c2 <- weighted.mean(transparencies, ZHANtranscycles[,2])
+wtdmean.c3 <- weighted.mean(transparencies, ZHANtranscycles[,3])
+wtdmean.c4 <- weighted.mean(transparencies, ZHANtranscycles[,4])
+
+
+wtdvar.c1 <- wtd.var(transparencies, ZHANtranscycles[,1])
+wtdvar.c2 <- wtd.var(transparencies, ZHANtranscycles[,2])
+wtdvar.c3 <- wtd.var(transparencies, ZHANtranscycles[,3])
+wtdvar.c4 <- wtd.var(transparencies, ZHANtranscycles[,4])
+
+
+meanvartrans <- data.frame(Means = c(wtdmean.c1, wtdmean.c2, wtdmean.c3, wtdmean.c4), Variances = c(wtdvar.c1, wtdvar.c2, wtdvar.c3, wtdvar.c4), Cycle = c(1, 2, 3, 4))
+meanvartrans$SD <- sqrt(meanvartrans$Variances)
+
+ggplot(meanvartrans) + 
+  geom_point(aes(x= Cycle, y = Means))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Transparency")
+
+
+```
+
+
+```{r tranparency by group 18S}
+#merge samples by cycle
+sample_data(ZHAN)$CycleChar <- paste("Cycle", sample_data(ZHAN)$Cycle)
+epiZHAN <- subset_samples(ZHAN, depthmean < 200)
+ZHANcycles <- merge_samples(epiZHAN, group = "CycleChar", fun = sum)
+
+# merge taxa by transparency
+taxtabletoadd <- data.frame(tax_table(ZHANcycles))
+unique(tax_table(ZHANcycles)[,6])
+
+
+taxtabletoadd$TransparencyGroup <- rep(0, ntaxa(ZHANcycles))
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Hexanauplia"] <- 167.819
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Malacostraca"] <- 118.157
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Polychaeta"] <- 99.028
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Ostracoda"] <- 96.632
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Sagittoidea"] <- 142.172
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Thaliacea"] <- 164.174
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Phascolosomatidea"] <- 113.5631579 #worms, others
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Pilidiophora"] <- 113.5631579 #worms others
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=='Hoplonemertea'] <- 113.5631579 #worms others
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Palaeonemertea"] <- 113.5631579 #worms others
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Ascidiacea"] <- 164.174 #doliolids salps
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Tentaculata"] <- 166.597 #ctenes 
+
+scratch <- subset_taxa(ZHANcycles, Class %in% c("Ascidiacea", "Thaliacea", "Gastropoda", "Hydrozoa", "Anthozoa", "Scyphozoa"))
+unique(tax_table(scratch)[,9])
+
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Order=="Siphonophorae"] <- 180.632
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Order=="Trachymedusae"] <- 180.632
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Order=="Pteropoda"] <- 190.064
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Order=="Narcomedusae"] <- 123.715
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Order=="Leptothecata"] <- 168.916 #hydro trachy
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Order=="Littorinimorpha"] <- 123.715
+
+scratch <- subset_taxa(ZHANcycles, Class %in% c("Thaliacea"))
+unique(tax_table(scratch)[,10])
+
+
+smdat <- sample_data(ZHANcycles)
+otudat <- otu_table(ZHANcycles)
+txtb <- tax_table(taxtabletoadd)
+colnames(tax_table(txtb)) <- colnames(taxtabletoadd)
+taxa_names(txtb) <- taxtabletoadd$hash
+
+ZHANcyclestransvals <- merge_phyloseq(txtb, smdat, otudat)
+
+tax_table(ZHANcyclestransvals) <- tax_table(ZHANcyclestransvals)[,c("TransparencyGroup", "CalculatedDVM")]
+ZHANcyclestransvals <- tax_glom(ZHANcyclestransvals, taxrank = "TransparencyGroup")
+taxa_names(ZHANcyclestransvals) <- tax_table(ZHANcyclestransvals)[,c("TransparencyGroup")]
+
+# get otu table 
+ZHANtranscycles <- data.frame(otu_table(ZHANcyclestransvals))
+ZHANtranscycles <- data.frame(t(ZHANtranscycles))
+ZHANtranscycles$Transparencies <- as.numeric(taxa_names(ZHANcyclestransvals))
+ZHANtranscycles <- ZHANtranscycles[ZHANtranscycles$Transparencies != 0,]
+
+
+wtdmean.c1 <- weighted.mean(ZHANtranscycles$Transparencies, ZHANtranscycles$Cycle.1)
+wtdmean.c2 <- weighted.mean(ZHANtranscycles$Transparencies, ZHANtranscycles$Cycle.2)
+wtdmean.c3 <- weighted.mean(ZHANtranscycles$Transparencies, ZHANtranscycles$Cycle.3)
+wtdmean.c4 <- weighted.mean(ZHANtranscycles$Transparencies, ZHANtranscycles$Cycle.4)
+
+
+wtdvar.c1 <- wtd.var(ZHANtranscycles$Transparencies, ZHANtranscycles$Cycle.1)
+wtdvar.c2 <- wtd.var(ZHANtranscycles$Transparencies, ZHANtranscycles$Cycle.2)
+wtdvar.c3 <- wtd.var(ZHANtranscycles$Transparencies, ZHANtranscycles$Cycle.3)
+wtdvar.c4 <- wtd.var(ZHANtranscycles$Transparencies, ZHANtranscycles$Cycle.4)
+
+
+meanvartrans <- data.frame(Means = c(wtdmean.c1, wtdmean.c2, wtdmean.c3, wtdmean.c4), Variances = c(wtdvar.c1, wtdvar.c2, wtdvar.c3, wtdvar.c4), Cycle = c(1, 2, 3, 4))
+meanvartrans$SD <- sqrt(meanvartrans$Variances)
+meanvartrans$SE <- meanvartrans$SD/sqrt(length(ZHANtranscycles$Transparencies))
+meanvartranswithenviro <- merge(meanvartrans, enviro_data, by.x = "Cycle", by.y = "cyclen")
+meanvartranswithenviro18S <- meanvartranswithenviro
+
+ggplot(meanvartranswithenviro) + 
+  geom_point(aes(x= Cycle, y = Means))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Transparency") + 
+  xlab("Cycle")
+
+
+```
+
+
+```{r transparency 5 categories COI}
+#merge samples by cycle
+sample_data(COI)$CycleChar <- paste("Cycle", sample_data(COI)$Cycle)
+COIcycles <- merge_samples(COI, group = "CycleChar", fun = sum)
+
+# merge taxa by transparency
+tax_table(COIcycles) <- tax_table(COIcycles)[,c("Transparency", "CalculatedDVM")]
+COIcycles <- tax_glom(COIcycles, taxrank = "Transparency")
+taxa_names(COIcycles) <- tax_table(COIcycles)[,c("Transparency")]
+
+# get otu table 
+COItranscycles <- data.frame(otu_table(COIcycles))
+COItranscycles <- COItranscycles[,c("X.1", "X.2", "X.3", "X.4", "X.5")]
+COItranscycles <- t(COItranscycles)
+
+#1 is opaque
+#5 is transparent
+t1 <- 99.6
+t2 <- 122.9
+t3 <- 143.2
+t4 <- 165.9
+t5 <- 179.2
+transparencies <- c(99.6, 122.9, 143.2, 165.9, 179.2)
+
+
+meanintensityc1 <- (COItranscycles[1,1]*t1+COItranscycles[2,1]*t2+COItranscycles[3,1]*t3+COItranscycles[4,1]*t4+COItranscycles[5,1]*t5)/sum(COItranscycles[1:5,1])
+meanintensityc2 <- (COItranscycles[1,2]*t1+COItranscycles[2,2]*t2+COItranscycles[3,2]*t3+COItranscycles[4,2]*t4+COItranscycles[5,2]*t5)/sum(COItranscycles[1:5,2])
+meanintensityc3 <- (COItranscycles[1,3]*t1+COItranscycles[2,3]*t2+COItranscycles[3,3]*t3+COItranscycles[4,3]*t4+COItranscycles[5,3]*t5)/sum(COItranscycles[1:5,3])
+meanintensityc4 <- (COItranscycles[1,4]*t1+COItranscycles[2,4]*t2+COItranscycles[3,4]*t3+COItranscycles[4,4]*t4+COItranscycles[5,4]*t5)/sum(COItranscycles[1:5,4])
+
+
+wtdmean.c1 <- weighted.mean(transparencies, COItranscycles[,1])
+wtdmean.c2 <- weighted.mean(transparencies, COItranscycles[,2])
+wtdmean.c3 <- weighted.mean(transparencies, COItranscycles[,3])
+wtdmean.c4 <- weighted.mean(transparencies, COItranscycles[,4])
+
+
+wtdvar.c1 <- wtd.var(transparencies, COItranscycles[,1])
+wtdvar.c2 <- wtd.var(transparencies, COItranscycles[,2])
+wtdvar.c3 <- wtd.var(transparencies, COItranscycles[,3])
+wtdvar.c4 <- wtd.var(transparencies, COItranscycles[,4])
+
+
+meanvartrans <- data.frame(Means = c(wtdmean.c1, wtdmean.c2, wtdmean.c3, wtdmean.c4), Variances = c(wtdvar.c1, wtdvar.c2, wtdvar.c3, wtdvar.c4), Cycle = c(1, 2, 3, 4))
+meanvartrans$SD <- sqrt(meanvartrans$Variances)
+
+ggplot(meanvartrans) + 
+  geom_point(aes(x= Cycle, y = Means))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Transparency")
+
+
+```
+
+```{r tranparency by group COI}
+#merge samples by cycle
+sample_data(COI)$CycleChar <- paste("Cycle", sample_data(COI)$Cycle)
+epiCOI <- subset_samples(COI, depthmean < 200)
+COIcycles <- merge_samples(epiCOI, group = "CycleChar", fun = sum)
+
+# merge taxa by transparency
+taxtabletoadd <- data.frame(tax_table(COIcycles))
+
+
+taxtabletoadd$TransparencyGroup <- rep(0, ntaxa(COIcycles))
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Hexanauplia"] <- 167.819
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Malacostraca"] <- 118.157
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Polychaeta"] <- 99.028
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Ostracoda"] <- 96.632
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Sagittoidea"] <- 142.172
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Thaliacea"] <- 164.174
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Phascolosomatidea"] <- 113.5631579 #worms, others
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Pilidiophora"] <- 113.5631579 #worms others
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=='Hoplonemertea'] <- 113.5631579 #worms others
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Palaeonemertea"] <- 113.5631579 #worms others
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Ascidiacea"] <- 164.174 #doliolids salps
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Class=="Tentaculata"] <- 166.597 #ctenes 
+
+scratch <- subset_taxa(COIcycles, Class %in% c("Ascidiacea", "Thaliacea", "Gastropoda", "Hydrozoa", "Anthozoa", "Scyphozoa"))
+unique(tax_table(scratch)[,9])
+
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Order=="Siphonophorae"] <- 180.632
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Order=="Trachymedusae"] <- 180.632
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Order=="Pteropoda"] <- 190.064
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Order=="Narcomedusae"] <- 123.715
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Order=="Leptothecata"] <- 168.916 #hydro trachy
+taxtabletoadd$TransparencyGroup[taxtabletoadd$Order=="Littorinimorpha"] <- 123.715
+
+scratch <- subset_taxa(COIcycles, Class %in% c("Thaliacea"))
+unique(tax_table(scratch)[,9])
+
+smdat <- sample_data(COIcycles)
+otudat <- otu_table(COIcycles)
+txtb <- tax_table(taxtabletoadd)
+colnames(tax_table(txtb)) <- colnames(taxtabletoadd)
+taxa_names(txtb) <- taxtabletoadd$hash
+
+COIcyclestransvals <- merge_phyloseq(txtb, smdat, otudat)
+
+tax_table(COIcyclestransvals) <- tax_table(COIcyclestransvals)[,c("TransparencyGroup", "CalculatedDVM")]
+COIcyclestransvals <- tax_glom(COIcyclestransvals, taxrank = "TransparencyGroup")
+taxa_names(COIcyclestransvals) <- tax_table(COIcyclestransvals)[,c("TransparencyGroup")]
+
+# get otu table 
+COItranscycles <- data.frame(otu_table(COIcyclestransvals))
+COItranscycles <- data.frame(t(COItranscycles))
+COItranscycles$Transparencies <- as.numeric(taxa_names(COIcyclestransvals))
+COItranscycles <- COItranscycles[COItranscycles$Transparencies != 0,]
+
+
+wtdmean.c1 <- weighted.mean(COItranscycles$Transparencies, COItranscycles$Cycle.1)
+wtdmean.c2 <- weighted.mean(COItranscycles$Transparencies, COItranscycles$Cycle.2)
+wtdmean.c3 <- weighted.mean(COItranscycles$Transparencies, COItranscycles$Cycle.3)
+wtdmean.c4 <- weighted.mean(COItranscycles$Transparencies, COItranscycles$Cycle.4)
+
+
+wtdvar.c1 <- wtd.var(COItranscycles$Transparencies, COItranscycles$Cycle.1)
+wtdvar.c2 <- wtd.var(COItranscycles$Transparencies, COItranscycles$Cycle.2)
+wtdvar.c3 <- wtd.var(COItranscycles$Transparencies, COItranscycles$Cycle.3)
+wtdvar.c4 <- wtd.var(COItranscycles$Transparencies, COItranscycles$Cycle.4)
+
+
+meanvartrans <- data.frame(Means = c(wtdmean.c1, wtdmean.c2, wtdmean.c3, wtdmean.c4), Variances = c(wtdvar.c1, wtdvar.c2, wtdvar.c3, wtdvar.c4), Cycle = c(1, 2, 3, 4))
+meanvartrans$SD <- sqrt(meanvartrans$Variances)
+meanvartrans$SE <- meanvartrans$SD/sqrt(length(COItranscycles$Transparencies))
+meanvartranswithenviro <- merge(meanvartrans, enviro_data, by.x = "Cycle", by.y = "cyclen")
+meanvartranswithenviroCOI <- meanvartranswithenviro
+
+ggplot(meanvartranswithenviro) + 
+  geom_point(aes(x= Cycle, y = Means))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Transparency") + 
+  xlab("Cycle")
+
+
+```
+
+
+```{r transparency both markers}
+meanvartranswithenviroCOI$marker <- "COI"
+meanvartranswithenviro18S$marker <- "18S"
+meantransbothmakers <- rbind(meanvartranswithenviroCOI, meanvartranswithenviro18S)
+
+ggplot(meantransbothmakers) + 
+  geom_point(aes(x= Cycle, y = Means, group = marker, color = marker), position=position_dodge(width=0.5))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SE, ymax=Means+SE, group = marker, color = marker), width = .01, position=position_dodge(width=0.5)) +
+  scale_color_manual(values = c("blue", "red")) +
+  ylab("Transparency") + 
+  xlab("Cycle") + 
+  theme_bw()
+
+transbothmarkers <- ggplot(meantransbothmakers) + 
+  geom_point(aes(x= Cycle, y = Means, group = marker, color = marker), position=position_dodge(width=0.5))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SE, ymax=Means+SE, group = marker, color = marker), width = .01, position=position_dodge(width=0.5)) +
+  scale_color_manual(values = c("blue", "red"), name = "Marker") +
+  ylab("Transparency") + 
+  xlab("Cycle") + 
+  theme_bw() +
+  scale_y_
+transbothmarkers
+
+
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/Transparency_byCycle.pdf", height =4.8, width = 8.5)
+transbothmarkers
+dev.off()
+```
+
+#> calculated dvm
+# plotting this by depth is somewhat circular
+# what if i propotion of DVM for each cycle?
+
+```{r DVM 18S}
+#merge samples by cycle
+sample_data(ZHAN)$CycleChar <- paste("Cycle", sample_data(ZHAN)$Cycle)
+ZHANcycles <- merge_samples(ZHAN, group = "CycleChar", fun = sum)
+
+# merge taxa by transparency
+tax_table(ZHANcycles) <- tax_table(ZHANcycles)[,c("CalculatedDVM", "Transparency")]
+ZHANcycles <- tax_glom(ZHANcycles, taxrank = "CalculatedDVM")
+taxa_names(ZHANcycles) <- tax_table(ZHANcycles)[,c("CalculatedDVM")]
+
+# get otu table 
+ZHANDVMcycles <- data.frame(otu_table(ZHANcycles))
+ZHANDVMcycles$PropDVM <- ZHANDVMcycles$Migratory/(ZHANDVMcycles$Migratory + ZHANDVMcycles$NonMigratory)
+#ZHANDVMcycles <- t(ZHANDVMcycles)
+ZHANDVMcycles$Cycle <- c(1, 2, 3, 4)
+
+ggplot(ZHANDVMcycles) + 
+  geom_point(aes(x= Cycle, y = PropDVM))+
+ # geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Proportion DVM")
+
+```
+
+```{r DVM COI}
+#merge samples by cycle
+sample_data(COI)$CycleChar <- paste("Cycle", sample_data(COI)$Cycle)
+COIcycles <- merge_samples(COI, group = "CycleChar", fun = sum)
+
+# merge taxa by transparency
+tax_table(COIcycles) <- tax_table(COIcycles)[,c("CalculatedDVM", "Transparency")]
+COIcycles <- tax_glom(COIcycles, taxrank = "CalculatedDVM")
+taxa_names(COIcycles) <- tax_table(COIcycles)[,c("CalculatedDVM")]
+
+# get otu table 
+COIDVMcycles <- data.frame(otu_table(COIcycles))
+COIDVMcycles$PropDVM <- COIDVMcycles$Migratory/(COIDVMcycles$Migratory + COIDVMcycles$NonMigratory)
+COIDVMcycles$Cycle <- c(1, 2, 3, 4)
+
+ggplot(COIDVMcycles) + 
+  geom_point(aes(x = Cycle, y = PropDVM)) +
+ # geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Proportion DVM")
+
+```
+
+```{r}
+COIDVMcycles$marker <- "COI"
+ZHANDVMcycles$marker <- "18S"
+DVMbothmarkers <- as.data.frame(rbind(COIDVMcycles, ZHANDVMcycles))
+
+DVMbothmarkers <- ggplot(DVMbothmarkers) + 
+  geom_point(aes(x= Cycle, y = PropDVM, group = marker, color = marker), position=position_dodge(width=0.5))+
+  geom_line(aes(x= Cycle, y = PropDVM, group = marker, color = marker, linetype = marker), position=position_dodge(width=0.5))+
+  scale_color_manual(values = c("blue", "red"), name = "Marker") +
+  scale_linetype_manual(values = c(1, 3),
+                        name = c("Marker")) +
+  ylab("Proportion DVM") + 
+  xlab("Cycle") + 
+  theme_bw() 
+DVMbothmarkers
+
+
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/DVM_byCycle.pdf", height =4.8, width = 8.5)
+DVMbothmarkers
+dev.off()
+```
+
+```{r plot six together}
+six <- ggarrange(asexualbothmarkers, spawnbothmarkers, DVMbothmarkers, feedbothmarkersplot, transbothmarkers, bothcarbonlab, nrow = 3, ncol = 2, labels = "auto") 
+#five <- ggarrange(five, feedbothmarkersplot, nrow = 2, ncol =1, heights = c(2,1))
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/mosttraits_byCycle.pdf", height =7, width = 6.6)
+six
+dev.off()
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/mosttraits_byCycle.jpeg", height =7, width = 6.6, unit = "in", quality = 100, res = 300)
+six
+dev.off()
+```
+
+
+
+#> size
+maybe this should be by depth
+start with range of size for each cycle?
+
+
+
+```{r size weighted mean and sd}
+#merge samples by cycle
+sample_data(ZHAN)$CycleChar <- paste("Cycle", sample_data(ZHAN)$Cycle)
+ZHANcycles <- merge_samples(ZHAN, group = "CycleChar", fun = sum)
+
+# merge taxa by size
+tax_table(ZHANcycles) <- tax_table(ZHANcycles)[,c("MaxSize", "DVMBehavior")]
+ZHANcyclesglom <- tax_glom(ZHANcycles, taxrank = "MaxSize")
+taxa_names(ZHANcyclesglom) <- tax_table(ZHANcyclesglom)[,c("MaxSize")]
+
+# convert to relative abundance
+ZHANcyclesra <- transform_sample_counts(ZHANcyclesglom, function(x) x / sum(x) )
+
+#get data
+smdat <- sample_data(ZHANcyclesra)
+otudat <- otu_table(ZHANcyclesra)
+#txtb <- tax_table(ZHANcyclesra)
+#colnames(tax_table(txtb)) <- colnames(taxtabletoadd)
+#taxa_names(txtb) <- taxtabletoadd$hash
+
+# get otu table 
+ZHANsizecycles <- data.frame(otu_table(ZHANcyclesra))
+ZHANsizecycles <- data.frame(t(ZHANsizecycles))
+ZHANsizecycles$size <- as.numeric(taxa_names(ZHANcyclesra))
+
+
+#test stat diffs btwn cycles
+ZHANsizecycleslong <- gather(ZHANsizecycles, Cycle.1, Cycle.2, Cycle.3, Cycle.4, value = "counts", key = "Cycle")
+ZHANsizecycleslong$percent <- ZHANsizecycleslong$counts*1000
+#chisq.test(ZHANsizecycleslong$percent, ZHANsizecycleslong$Cycle)
+#fisher.test(ZHANsizecycleslong$percent, ZHANsizecycleslong$Cycle)
+#plant.aov <- anova(lm(counts ~ Cycle, data = ZHANsizecycles))
+#plant.aov
+
+wtdmean.c1 <- weighted.mean(ZHANsizecycles$size, ZHANsizecycles$Cycle.1)
+wtdmean.c2 <- weighted.mean(ZHANsizecycles$size, ZHANsizecycles$Cycle.2)
+wtdmean.c3 <- weighted.mean(ZHANsizecycles$size, ZHANsizecycles$Cycle.3)
+wtdmean.c4 <- weighted.mean(ZHANsizecycles$size, ZHANsizecycles$Cycle.4)
+wtdvar.c1 <- wtd.var(ZHANsizecycles$size, ZHANsizecycles$Cycle.1, normwt=TRUE)
+wtdvar.c2 <- wtd.var(ZHANsizecycles$size, ZHANsizecycles$Cycle.2, normwt=TRUE)
+wtdvar.c3 <- wtd.var(ZHANsizecycles$size, ZHANsizecycles$Cycle.3, normwt=TRUE)
+wtdvar.c4 <- wtd.var(ZHANsizecycles$size, ZHANsizecycles$Cycle.4, normwt=TRUE)
+
+meanvartrans <- data.frame(Means = c(wtdmean.c1, wtdmean.c2, wtdmean.c3, wtdmean.c4), Variances = c(wtdvar.c1, wtdvar.c2, wtdvar.c3, wtdvar.c4), Cycle = c(1, 2, 3, 4))
+meanvartrans$SD <- sqrt(meanvartrans$Variances)
+meanvartranswithenviro <- merge(meanvartrans, enviro_data, by.x = "Cycle", by.y = "cyclen")
+meanvartranswithenviro18S <- meanvartranswithenviro
+
+ggplot(meanvartranswithenviro) + 
+  geom_point(aes(x= Cycle, y = Means))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Transparency") + 
+  xlab("Cycle") 
+
+
+
+##COI
+#merge samples by cycle
+sample_data(COI)$CycleChar <- paste("Cycle", sample_data(COI)$Cycle)
+COIcycles <- merge_samples(COI, group = "CycleChar", fun = sum)
+
+# merge taxa by size
+tax_table(COIcycles) <- tax_table(COI)[,c("MaxSize", "DVMBehavior")]
+COIcyclesglom <- tax_glom(COIcycles, taxrank = "MaxSize")
+taxa_names(COIcyclesglom) <- tax_table(COIcyclesglom)[,c("MaxSize")]
+
+# convert to relative abundance
+COIcyclesra <- transform_sample_counts(COIcyclesglom, function(x) x / sum(x) )
+
+#get data
+smdat <- sample_data(COIcyclesra)
+otudat <- otu_table(COIcyclesra)
+#txtb <- tax_table(ZHANcyclesra)
+#colnames(tax_table(txtb)) <- colnames(taxtabletoadd)
+#taxa_names(txtb) <- taxtabletoadd$hash
+
+# get otu table 
+COIsizecycles <- data.frame(otu_table(COIcyclesra))
+COIsizecycles <- data.frame(t(COIsizecycles))
+COIsizecycles$size <- as.numeric(taxa_names(COIcyclesra))
+
+wtdmean.c1 <- weighted.mean(COIsizecycles$size, COIsizecycles$Cycle.1)
+wtdmean.c2 <- weighted.mean(COIsizecycles$size, COIsizecycles$Cycle.2)
+wtdmean.c3 <- weighted.mean(COIsizecycles$size, COIsizecycles$Cycle.3)
+wtdmean.c4 <- weighted.mean(COIsizecycles$size, COIsizecycles$Cycle.4)
+wtdvar.c1 <- wtd.var(COIsizecycles$size, COIsizecycles$Cycle.1, normwt=TRUE)
+wtdvar.c2 <- wtd.var(COIsizecycles$size, COIsizecycles$Cycle.2, normwt=TRUE)
+wtdvar.c3 <- wtd.var(COIsizecycles$size, COIsizecycles$Cycle.3, normwt=TRUE)
+wtdvar.c4 <- wtd.var(COIsizecycles$size, COIsizecycles$Cycle.4, normwt=TRUE)
+
+meanvartrans <- data.frame(Means = c(wtdmean.c1, wtdmean.c2, wtdmean.c3, wtdmean.c4), Variances = c(wtdvar.c1, wtdvar.c2, wtdvar.c3, wtdvar.c4), Cycle = c(1, 2, 3, 4))
+meanvartrans$SD <- sqrt(meanvartrans$Variances)
+meanvartranswithenviro <- merge(meanvartrans, enviro_data, by.x = "Cycle", by.y = "cyclen")
+meanvartranswithenviroCOI <- meanvartranswithenviro
+
+ggplot(meanvartranswithenviro) + 
+  geom_point(aes(x= Cycle, y = Means))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Transparency") + 
+  xlab("Cycle") 
+
+
+
+##TOGETHER
+meanvartranswithenviroCOI$marker <- "COI"
+meanvartranswithenviro18S$marker <- "18S"
+meantransbothmakersfull <- rbind(meanvartranswithenviroCOI, meanvartranswithenviro18S)
+
+ggplot(meantransbothmakersfull) + 
+  geom_point(aes(x= Cycle, y = Means, group = marker, color = marker), position=position_dodge(width=0.5))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD, group = marker, color = marker), width = .1, position=position_dodge(width=0.5)) +
+  scale_color_manual(values = c("blue", "red")) +
+  ylab("Size (mm)") + 
+  xlab("Cycle") + 
+  theme_bw()
+
+transbothmarkersfull <- ggplot(meantransbothmakersfull) + 
+  geom_point(aes(x= Cycle, y = Means, group = marker, color = marker), position=position_dodge(width=0.5))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD, group = marker, color = marker), width = .1, position=position_dodge(width=0.5)) +
+  scale_color_manual(values = c("blue", "red"), name = "Marker") +
+  ylab("Size (mm)") + 
+  xlab("Cycle") + 
+  theme_bw() 
+transbothmarkersfull
+
+
+```
+
+
+
+```{r size epi weighted mean and sd}
+#merge samples by cycle
+sample_data(ZHAN)$CycleChar <- paste("Cycle", sample_data(ZHAN)$Cycle)
+ZHANcycles <- merge_samples(subset_samples(ZHAN, depthmean < 200), group = "CycleChar", fun = sum)
+
+# merge taxa by size
+tax_table(ZHANcycles) <- tax_table(ZHANcycles)[,c("MaxSize", "DVMBehavior")]
+ZHANcyclesglom <- tax_glom(ZHANcycles, taxrank = "MaxSize")
+taxa_names(ZHANcyclesglom) <- tax_table(ZHANcyclesglom)[,c("MaxSize")]
+
+# convert to relative abundance
+ZHANcyclesra <- transform_sample_counts(ZHANcyclesglom, function(x) x / sum(x) )
+
+#get data
+smdat <- sample_data(ZHANcyclesra)
+otudat <- otu_table(ZHANcyclesra)
+#txtb <- tax_table(ZHANcyclesra)
+#colnames(tax_table(txtb)) <- colnames(taxtabletoadd)
+#taxa_names(txtb) <- taxtabletoadd$hash
+
+# get otu table 
+ZHANsizecycles <- data.frame(otu_table(ZHANcyclesra))
+ZHANsizecycles <- data.frame(t(ZHANsizecycles))
+ZHANsizecycles$size <- as.numeric(taxa_names(ZHANcyclesra))
+
+wtdmean.c1 <- weighted.mean(ZHANsizecycles$size, ZHANsizecycles$Cycle.1)
+wtdmean.c2 <- weighted.mean(ZHANsizecycles$size, ZHANsizecycles$Cycle.2)
+wtdmean.c3 <- weighted.mean(ZHANsizecycles$size, ZHANsizecycles$Cycle.3)
+wtdmean.c4 <- weighted.mean(ZHANsizecycles$size, ZHANsizecycles$Cycle.4)
+wtdvar.c1 <- wtd.var(ZHANsizecycles$size, ZHANsizecycles$Cycle.1, normwt=TRUE)
+wtdvar.c2 <- wtd.var(ZHANsizecycles$size, ZHANsizecycles$Cycle.2, normwt=TRUE)
+wtdvar.c3 <- wtd.var(ZHANsizecycles$size, ZHANsizecycles$Cycle.3, normwt=TRUE)
+wtdvar.c4 <- wtd.var(ZHANsizecycles$size, ZHANsizecycles$Cycle.4, normwt=TRUE)
+
+meanvartrans <- data.frame(Means = c(wtdmean.c1, wtdmean.c2, wtdmean.c3, wtdmean.c4), Variances = c(wtdvar.c1, wtdvar.c2, wtdvar.c3, wtdvar.c4), Cycle = c(1, 2, 3, 4))
+meanvartrans$SD <- sqrt(meanvartrans$Variances)
+meanvartranswithenviro <- merge(meanvartrans, enviro_data, by.x = "Cycle", by.y = "cyclen")
+meanvartranswithenviro18S <- meanvartranswithenviro
+
+ggplot(meanvartranswithenviro) + 
+  geom_point(aes(x= Cycle, y = Means))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Transparency") + 
+  xlab("Cycle") 
+
+
+
+##COI
+#merge samples by cycle
+sample_data(COI)$CycleChar <- paste("Cycle", sample_data(COI)$Cycle)
+COIcycles <- merge_samples(subset_samples(COI, depthmean < 200), group = "CycleChar", fun = sum)
+
+# merge taxa by size
+tax_table(COIcycles) <- tax_table(COI)[,c("MaxSize", "DVMBehavior")]
+COIcyclesglom <- tax_glom(COIcycles, taxrank = "MaxSize")
+taxa_names(COIcyclesglom) <- tax_table(COIcyclesglom)[,c("MaxSize")]
+
+# convert to relative abundance
+COIcyclesra <- transform_sample_counts(COIcyclesglom, function(x) x / sum(x) )
+
+#get data
+smdat <- sample_data(COIcyclesra)
+otudat <- otu_table(COIcyclesra)
+#txtb <- tax_table(ZHANcyclesra)
+#colnames(tax_table(txtb)) <- colnames(taxtabletoadd)
+#taxa_names(txtb) <- taxtabletoadd$hash
+
+# get otu table 
+COIsizecycles <- data.frame(otu_table(COIcyclesra))
+COIsizecycles <- data.frame(t(COIsizecycles))
+COIsizecycles$size <- as.numeric(taxa_names(COIcyclesra))
+
+wtdmean.c1 <- weighted.mean(COIsizecycles$size, COIsizecycles$Cycle.1)
+wtdmean.c2 <- weighted.mean(COIsizecycles$size, COIsizecycles$Cycle.2)
+wtdmean.c3 <- weighted.mean(COIsizecycles$size, COIsizecycles$Cycle.3)
+wtdmean.c4 <- weighted.mean(COIsizecycles$size, COIsizecycles$Cycle.4)
+wtdvar.c1 <- wtd.var(COIsizecycles$size, COIsizecycles$Cycle.1, normwt=TRUE)
+wtdvar.c2 <- wtd.var(COIsizecycles$size, COIsizecycles$Cycle.2, normwt=TRUE)
+wtdvar.c3 <- wtd.var(COIsizecycles$size, COIsizecycles$Cycle.3, normwt=TRUE)
+wtdvar.c4 <- wtd.var(COIsizecycles$size, COIsizecycles$Cycle.4, normwt=TRUE)
+
+meanvartrans <- data.frame(Means = c(wtdmean.c1, wtdmean.c2, wtdmean.c3, wtdmean.c4), Variances = c(wtdvar.c1, wtdvar.c2, wtdvar.c3, wtdvar.c4), Cycle = c(1, 2, 3, 4))
+meanvartrans$SD <- sqrt(meanvartrans$Variances)
+meanvartranswithenviro <- merge(meanvartrans, enviro_data, by.x = "Cycle", by.y = "cyclen")
+meanvartranswithenviroCOI <- meanvartranswithenviro
+
+ggplot(meanvartranswithenviro) + 
+  geom_point(aes(x= Cycle, y = Means))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Transparency") + 
+  xlab("Cycle") 
+
+
+
+##TOGETHER
+meanvartranswithenviroCOI$marker <- "COI"
+meanvartranswithenviro18S$marker <- "18S"
+meantransbothmakersepi <- rbind(meanvartranswithenviroCOI, meanvartranswithenviro18S)
+
+ggplot(meantransbothmakersepi) + 
+  geom_point(aes(x= Cycle, y = Means, group = marker, color = marker), position=position_dodge(width=0.5))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD, group = marker, color = marker), width = .1, position=position_dodge(width=0.5)) +
+  scale_color_manual(values = c("blue", "red")) +
+  ylab("Size (mm)") + 
+  xlab("Cycle") + 
+  theme_bw()
+
+transbothmarkersepi <- ggplot(meantransbothmakersepi) + 
+  geom_point(aes(x= Cycle, y = Means, group = marker, color = marker), position=position_dodge(width=0.5))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD, group = marker, color = marker), width = .1, position=position_dodge(width=0.5)) +
+  scale_color_manual(values = c("blue", "red"), name = "Marker") +
+  ylab("Size (mm)") + 
+  xlab("Cycle") + 
+  theme_bw() 
+transbothmarkersepi
+
+```
+
+
+```{r plot together}
+meantransbothmakersepi$Depth <- "0-200m"
+meantransbothmakersfull$Depth <- "0-400m"
+meansizeall <- rbind(meantransbothmakersepi, meantransbothmakersfull)
+
+allsize <- ggplot(meansizeall) + 
+  geom_point(aes(x= Cycle, y = Means, shape = Depth, color = marker), position=position_dodge(width=0.5))+
+  geom_errorbar(aes(x = Cycle, ymin=Means-SE, ymax=Means+SE, linetype = Depth, color = marker), width = .01, position=position_dodge(width=0.5)) +
+  scale_color_manual(values = c("blue", "red"), name = "Marker") +
+  ylab("Max. body size (mm)") + 
+  xlab("Cycle") + 
+  theme_bw() 
+allsize
+
+size <- ggarrange(transbothmarkersfull, transbothmarkersepi, nrow = 1, ncol = 2)
+size
+
+
+```
+
+
+
+
+##> CYcle Summary Diet
+
+```{r diet 18S}
+#merge samples by cycle
+sample_data(ZHAN)$CycleChar <- paste("Cycle", sample_data(ZHAN)$Cycle)
+ZHANcycles <- merge_samples(ZHAN, group = "CycleChar", fun = sum)
+
+# merge taxa by transparency
+tax_table(ZHANcycles) <- tax_table(ZHANcycles)[,c("Diet", "Transparency")]
+ZHANcycles <- tax_glom(ZHANcycles, taxrank = "Diet")
+taxa_names(ZHANcycles) <- tax_table(ZHANcycles)[,c("Diet")]
+
+# get otu table 
+ZHAN.feed.cycles <- data.frame(otu_table(ZHANcycles))
+ZHAN.feed.cycles$Carnivore_prop <- ZHAN.feed.cycles$Carnivore/(ZHAN.feed.cycles$Carnivore + ZHAN.feed.cycles$Herbivore + ZHAN.feed.cycles$Omnivore )
+ZHAN.feed.cycles$Herbivore_prop <- ZHAN.feed.cycles$Herbivore/(ZHAN.feed.cycles$Carnivore + ZHAN.feed.cycles$Herbivore + ZHAN.feed.cycles$Omnivore)
+ZHAN.feed.cycles$Omnivore_prop <- ZHAN.feed.cycles$Omnivore/(ZHAN.feed.cycles$Carnivore + ZHAN.feed.cycles$Herbivore + ZHAN.feed.cycles$Omnivore )
+ZHAN.feed.cycles$Cycle <- c(1, 2, 3, 4)
+ZHAN.feed.cycles_long <- pivot_longer(ZHAN.feed.cycles, names_to = "Diet", cols = c("Carnivore_prop", "Herbivore_prop", "Omnivore_prop"))
+
+ggplot(ZHAN.feed.cycles_long) + 
+  geom_point(aes(x = Cycle, y = value, color = Diet, shape = Diet)) + 
+  scale_shape_manual(values = c(15, 16, 17), name = "Diet", labels = c("Carnivore", "Herbivore", "Omnivore")) +
+  scale_color_manual(values = c("#0000EE", "#CD2626", "#9A32CD"), name = "Diet", labels = c("Carnivore", "Herbivore", "Omnivore")) +
+ # geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Proportion reads")
+
+
+
+```
+
+
+```{r diet COI}
+#merge samples by cycle
+sample_data(COI)$CycleChar <- paste("Cycle", sample_data(COI)$Cycle)
+COIcycles <- merge_samples(COI, group = "CycleChar", fun = sum)
+
+# merge taxa by transparency
+tax_table(COIcycles) <- tax_table(COIcycles)[,c("Diet", "Transparency")]
+COIcycles <- tax_glom(COIcycles, taxrank = "Diet")
+taxa_names(COIcycles) <- tax_table(COIcycles)[,c("Diet")]
+
+# get otu table 
+COI.feed.cycles <- data.frame(otu_table(COIcycles))
+COI.feed.cycles$Carnivore_prop <- COI.feed.cycles$Carnivore/(COI.feed.cycles$Carnivore + COI.feed.cycles$Herbivore + COI.feed.cycles$Omnivore)
+COI.feed.cycles$Herbivore_prop <- COI.feed.cycles$Herbivore/(COI.feed.cycles$Carnivore + COI.feed.cycles$Herbivore + COI.feed.cycles$Omnivore)
+COI.feed.cycles$Omnivore_prop <- COI.feed.cycles$Omnivore/(COI.feed.cycles$Carnivore + COI.feed.cycles$Herbivore + COI.feed.cycles$Omnivore)
+COI.feed.cycles$Cycle <- c(1, 2, 3, 4)
+COI.feed.cycles_long <- pivot_longer(COI.feed.cycles, names_to = "Diet", cols = c("Carnivore_prop", "Herbivore_prop", "Omnivore_prop"))
+
+ggplot(COI.feed.cycles_long) + 
+  geom_point(aes(x = Cycle, y = value, color = Diet, shape = Diet)) + 
+  scale_shape_manual(values = c(15, 16, 17), name = "Diet", labels = c("Carnivore", "Herbivore", "Omnivore")) +
+  scale_color_manual(values = c("#0000EE", "#CD2626", "#9A32CD"), name = "Diet", labels = c("Carnivore", "Herbivore", "Omnivore")) +
+ # geom_errorbar(aes(x = Cycle, ymin=Means-SD, ymax=Means+SD)) +
+  ylab("Proportion reads")
+
+
+
+```
+
+
+```{r diet both}
+COI.feed.cycles_long$Marker <- "COI"
+ZHAN.feed.cycles_long$Marker <- "18S"
+feedbothmarkers <- (rbind(data.frame(COI.feed.cycles_long), data.frame(ZHAN.feed.cycles_long)))
+feedbothmarkers$groupvar <- paste(feedbothmarkers$Marker, feedbothmarkers$Diet)
+
+dietbothmarkersplot <- ggplot(feedbothmarkers) + 
+  geom_point(aes(x= Cycle, y = value, group = groupvar, color = Diet, shape = Diet), position=position_dodge(width=0.5))+
+  geom_line(aes(x= Cycle, y = value, group = groupvar, color = Diet, linetype = Marker), position=position_dodge(width=0.5))+
+  scale_color_manual(values = c("#CD2626", "#228B22", "#9A32CD"), name = "Diet", labels = c("Carnivore", "Herbivore", "Omnivore")) +
+  scale_shape_manual(values = c(15, 16, 17), name = "Diet", labels = c("Carnivore", "Herbivore", "Omnivore"))  +
+  ylab("Proportion of reads") + 
+  xlab("Cycle") + 
+  theme_bw() +
+  guides(color =  guide_legend(order = 2),
+         linetype = guide_legend(order = 1),
+         shape = guide_legend(order = 2))
+dietbothmarkersplot
+
+```
+
+
+
+
+
+
+# > megaplot
+
+```{r plot 8 together}
+eight <- ggarrange(asexualbothmarkers, spawnbothmarkers, DVMbothmarkers, feedbothmarkersplot, allsize, dietbothmarkersplot, transbothmarkers, bothCarbon, nrow = 4, ncol = 2, labels = "auto", align = "hv") 
+seven <- ggarrange(six, allsize, nrow = 2, ncol = 1, heights = c(3,1.2), labels = c("", "g"))
+#five <- ggarrange(five, feedbothmarkersplot, nrow = 2, ncol =1, heights = c(2,1))
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/eighttraits_byCycle.pdf", height =10, width = 8)
+eight
+dev.off()
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/eighttraits_byCycle.jpeg", height =10, width = 8, unit = "in", quality = 100, res = 300)
+eight
+dev.off()
+```
+
+
+
+##supplemental figures beyond here
+
+```{r who are the dvm for each?}
+
+plot_bar_width_double_copepods <- function (physeq, x = "Sample", y = "Abundance", 
+  title = NULL, facet_grid = NULL, w = "binwidth") {
+  mdf = psmelt(physeq)
+  disp1 <- max(mdf$Abundance)*1.05
+  mdf$Abundance[mdf$Diel == "night"] <- mdf$Abundance[mdf$Diel == "night"]*-1
+  p <- ggplot(mdf, aes(width = binwidth*.9)) + 
+    annotate("rect", xmin = -Inf,
+                  xmax = Inf,
+                  ymin =  -Inf,
+                  ymax = 0, fill = "grey60", alpha = 0.5) + 
+        geom_bar(aes(x = depthmean, y = Abundance, fill = Family), stat = "identity") + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4), limits = c(-disp1, disp1), labels=abs) +
+    theme_bw() + 
+    scale_fill_manual(values = c('#e6194B', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', '#469990', '#dcbeff', '#9A6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#a9a9a9', '#ffffff', '#000000')) +
+    coord_flip() + 
+    scale_x_reverse() +
+    labs(x = "Depth (m)", y = "Relative Abundance") +
+  geom_hline(yintercept = 0, size = 0.2) 
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(facet_grid)
+  }
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+
+
+migratory18S <- subset_taxa(transform_sample_counts(ZHAN, function(x) x / sum(x) ), CalculatedDVM == "Migratory")
+migratoryCOI <- subset_taxa(transform_sample_counts(COI, function(x) x / sum(x) ), CalculatedDVM == "Migratory")
+
+migratory18S <- phyloseq_standardize_otu_abundance(migratory18S, method = "pa")
+migratoryCOI <- phyloseq_standardize_otu_abundance(migratoryCOI, method = "pa")
+
+tax_table(migratory18S)[,10][tax_table(migratory18S)[,10]==""] <- "Unidentified"
+tax_table(migratoryCOI)[,10][tax_table(migratoryCOI)[,10]==""] <- "Unidentified"
+
+migratory18S <- filter_taxa(migratory18S, function(x) sum(x) > 0, TRUE)
+migratoryCOI <- filter_taxa(migratoryCOI, function(x) sum(x) > 0, TRUE)
+
+myColors34 <- c("#8A2BE2", "#F0F8FF", "#EE3B3B", "#FFF8DC", "#FF8C00", "#E0EEE0", "#6E8B3D", "#CAE1FF", "#104E8B", "#030303", "#EE6A50", "#00688B", "#66CD00", "#CDC0B0", "#008B00", "#0000FF", "#EED5B7", "#20B2AA", "#FF34B3", "#E6E6FA", "#CDCDB4", "#EEB422", "#6495ED", "#00688B", "#B3B3B3", "#4A4A4A", "#AB82FF", "#FFFF00", "#00C5CD", "#FFE4E1", "#000080", "#8B2500", "#4EEE94", "#EE799F")
+myColors34 <- myColors34[1:34]
+
+names(myColors34) <- sort(unique(c(unique(tax_table(migratory18S)[,10]), tax_table(migratoryCOI)[,10])))
+
+migratory18S_plot <- plot_bar_width_double_copepods(migratory18S, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4) + 
+  theme(strip.text = element_blank()) +  
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = myColors34, name = "Family") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL) + ylab("Relative abundance of COI reads")+
+  guides(fill = guide_legend(ncol = 2)) + 
+  ggtitle("18S Migrators")
+migratory18S_plot
+
+migratoryCOI_plot <- plot_bar_width_double_copepods(migratoryCOI, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4) + 
+  theme(strip.text = element_blank()) +  
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = myColors34, name = "Family") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL) + ylab("Relative abundance of COI reads")+
+  guides(fill = guide_legend(ncol = 2)) + 
+  ggtitle("COI Migrators")
+migratoryCOI_plot
+
+migrators <- ggarrange(migratory18S_plot, migratoryCOI_plot, common.legend = TRUE, legend = "right", align = "hv")
+migrators
+
+## convert this to PA to get counts instead of relative abundance 
+```
+
+```{r migrators pa}
+
+cycle_migrators <- function (physeq, x = "Sample", y = "Abundance", 
+  title = NULL, facet_grid = NULL, w = "binwidth") {
+  mdf = psmelt(physeq)
+  p <- ggplot(mdf) + 
+    geom_bar(aes(x = Sample, y = Abundance, fill = Family), stat = "identity") + 
+    theme_bw() + 
+    scale_fill_manual(values = c('#e6194B', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', '#469990', '#dcbeff', '#9A6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#a9a9a9', '#ffffff', '#000000')) +
+    labs(x = "Cycle", y = "OTU Count") +
+  geom_hline(yintercept = 0, size = 0.2) 
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(facet_grid)
+  }
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+
+
+migratory18S <- subset_taxa(ZHAN, CalculatedDVM == "Migratory")
+migratoryCOI <- subset_taxa(COI, CalculatedDVM == "Migratory")
+
+migratory18S <- filter_taxa(migratory18S, function(x) sum(x) > 0, TRUE)
+migratoryCOI <- filter_taxa(migratoryCOI, function(x) sum(x) > 0, TRUE)
+
+migratory18S_cycle <- merge_samples(migratory18S, "CycleChar")
+migratoryCOI_cycle <- merge_samples(migratoryCOI, "CycleChar")
+
+migratory18S_cycle_pa <- phyloseq_standardize_otu_abundance(migratory18S_cycle, method = "pa") #reconvert to pa b/c merging samples added the counts together
+migratoryCOI_cycle_pa <- phyloseq_standardize_otu_abundance(migratoryCOI_cycle, method = "pa")
+
+
+migratory18S_cycle_pa_plot <- cycle_migrators(migratory18S_cycle_pa) + 
+  #facet_wrap(.~Cycle, ncol = 4) + 
+  theme(strip.text = element_blank()) +  
+ # theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = myColors34, name = "Family") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL)+
+  guides(fill = guide_legend(ncol = 2)) + 
+  ggtitle("18S Migratory ASVs") + 
+  ylab("# of OTUs")
+migratory18S_cycle_pa_plot
+
+migratoryCOI_cycle_pa_plot <- cycle_migrators(migratoryCOI_cycle_pa) + 
+ # facet_wrap(.~Cycle, ncol = 4) + 
+  theme(strip.text = element_blank()) +  
+ # theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = myColors34, name = "Family") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL) +
+  guides(fill = guide_legend(ncol = 2)) + 
+  ggtitle("COI Migratory OTUs")+ 
+  ylab("# of OTUs")
+migratoryCOI_cycle_pa_plot
+
+migrators_cycle <- ggarrange(migratory18S_cycle_pa_plot, migratoryCOI_cycle_pa_plot, common.legend = TRUE, legend = "right", align = "hv")
+migrators_cycle
+
+```
+
+
+```{r}
+
+
+migratory18S_cycle <- merge_samples(ZHAN, "CycleChar")
+migratoryCOI_cycle <- merge_samples(COI, "CycleChar")
+
+migratory18S_relab <- subset_taxa(transform_sample_counts(migratory18S_cycle, function(x) x / sum(x) ), CalculatedDVM == "Migratory")
+migratoryCOI_relab <- subset_taxa(transform_sample_counts(migratoryCOI_cycle, function(x) x / sum(x) ), CalculatedDVM == "Migratory")
+
+migratory18S_relab <- filter_taxa(migratory18S_relab, function(x) sum(x) > 0, TRUE)
+migratoryCOI_relab <- filter_taxa(migratoryCOI_relab, function(x) sum(x) > 0, TRUE)
+
+
+
+
+migratory18S_plot_cycle_relab <- cycle_migrators(migratory18S_relab) + 
+  #facet_wrap(.~Cycle, ncol = 4) + 
+  theme(strip.text = element_blank()) +  
+ # theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = myColors34, name = "Family") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL)+
+  guides(fill = guide_legend(ncol = 2)) + 
+  ggtitle("18S Migratory Reads") + ylab("Relative Abundance")
+migratory18S_plot_cycle_relab
+
+migratoryCOI_plot_cycle_relab <- cycle_migrators(migratoryCOI_relab) + 
+ # facet_wrap(.~Cycle, ncol = 4) + 
+  theme(strip.text = element_blank()) +  
+ # theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = myColors34, name = "Family") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL) +
+  guides(fill = guide_legend(ncol = 2)) + 
+  ggtitle("COI Migratory Reads") + ylab("Relative Abundance")
+migratoryCOI_plot_cycle_relab
+
+migrators_cycle <- ggarrange(migratory18S_cycle_pa_plot, migratory18S_plot_cycle_relab, migratoryCOI_cycle_pa_plot, migratoryCOI_plot_cycle_relab, ncol = 2, nrow = 2, common.legend = TRUE, legend = "right", labels = "auto", align = "hv")
+migrators_cycle
+
+```
+
+```{r}
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/migrators.pdf", height =6, width = 8)
+migrators_cycle
+dev.off()
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/migrators.jpeg", height =6, width = 8, unit = "in", quality = 100, res = 300)
+migrators_cycle
+dev.off()
+```
+
+
+
+```{r asexual which taxa}
+
+cycle_migrators <- function (physeq, x = "Sample", y = "Abundance", 
+  title = NULL, facet_grid = NULL, w = "binwidth") {
+  mdf = psmelt(physeq)
+  p <- ggplot(mdf) + 
+    geom_bar(aes(x = Sample, y = Abundance, fill = Family), stat = "identity") + 
+    theme_bw() + 
+    scale_fill_manual(values = c('#e6194B', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', '#469990', '#dcbeff', '#9A6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#a9a9a9', '#ffffff', '#000000')) +
+    labs(x = "Cycle", y = "OTU Count") +
+  geom_hline(yintercept = 0, size = 0.2) 
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(facet_grid)
+  }
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+
+
+migratory18S <- subset_taxa(ZHAN, AsexualRepro == "Yes")
+migratoryCOI <- subset_taxa(COI, AsexualRepro == "Yes")
+
+migratory18S <- filter_taxa(migratory18S, function(x) sum(x) > 0, TRUE)
+migratoryCOI <- filter_taxa(migratoryCOI, function(x) sum(x) > 0, TRUE)
+
+migratory18S_cycle <- merge_samples(migratory18S, "CycleChar")
+migratoryCOI_cycle <- merge_samples(migratoryCOI, "CycleChar")
+
+migratory18S_cycle_pa <- phyloseq_standardize_otu_abundance(migratory18S_cycle, method = "pa") #reconvert to pa b/c merging samples added the counts together
+migratoryCOI_cycle_pa <- phyloseq_standardize_otu_abundance(migratoryCOI_cycle, method = "pa")
+
+tax_table(migratory18S_cycle_pa)[,10][tax_table(migratory18S_cycle_pa)[,10]==""] <- "Unidentified"
+tax_table(migratoryCOI_cycle_pa)[,10][tax_table(migratoryCOI_cycle_pa)[,10]==""] <- "Unidentified"
+
+
+myColors34 <- c("#8A2BE2", "#F0F8FF", "#EE3B3B", "#FFF8DC", "#FF8C00", "#E0EEE0", "#6E8B3D", "#CAE1FF", "#104E8B", "#030303", "#EE6A50", "#00688B", "#66CD00", "#CDC0B0", "#008B00", "#0000FF", "#EED5B7", "#20B2AA", "#FF34B3", "#E6E6FA", "#CDCDB4", "#EEB422", "#6495ED", "#00688B", "#B3B3B3", "#4A4A4A", "#AB82FF", "#FFFF00", "#00C5CD", "#FFE4E1", "#000080", "#8B2500", "#4EEE94", "#EE799F")
+myColors34 <- myColors34[1:20]
+
+names(myColors34) <- sort(unique(c(unique(tax_table(migratory18S_cycle_pa)[,10]), tax_table(migratoryCOI_cycle_pa)[,10])))
+
+
+migratory18S_cycle_pa_plot <- cycle_migrators(migratory18S_cycle_pa) + 
+  #facet_wrap(.~Cycle, ncol = 4) + 
+  theme(strip.text = element_blank()) +  
+ # theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = myColors34, name = "Family") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL)+
+  guides(fill = guide_legend(ncol = 1)) + 
+  ggtitle("18S Asexual ASVs") + 
+  ylab("# of OTUs")
+migratory18S_cycle_pa_plot
+
+migratoryCOI_cycle_pa_plot <- cycle_migrators(migratoryCOI_cycle_pa) + 
+ # facet_wrap(.~Cycle, ncol = 4) + 
+  theme(strip.text = element_blank()) +  
+ # theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = myColors34, name = "Family") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL) +
+  guides(fill = guide_legend(ncol = 1)) + 
+  ggtitle("COI Asexual OTUs")+ 
+  ylab("# of OTUs")
+migratoryCOI_cycle_pa_plot
+
+migrators_cycle <- ggarrange(migratory18S_cycle_pa_plot, migratoryCOI_cycle_pa_plot, common.legend = TRUE, legend = "right", align = "hv")
+migrators_cycle
+
+
+migratory18S_cycle <- merge_samples(ZHAN, "CycleChar")
+migratoryCOI_cycle <- merge_samples(COI, "CycleChar")
+
+migratory18S_relab <- subset_taxa(transform_sample_counts(migratory18S_cycle, function(x) x / sum(x) ), AsexualRepro == "Yes")
+migratoryCOI_relab <- subset_taxa(transform_sample_counts(migratoryCOI_cycle, function(x) x / sum(x) ), AsexualRepro == "Yes")
+
+migratory18S_relab <- filter_taxa(migratory18S_relab, function(x) sum(x) > 0, TRUE)
+migratoryCOI_relab <- filter_taxa(migratoryCOI_relab, function(x) sum(x) > 0, TRUE)
+
+
+myColors34 <- c("#8A2BE2", "#F0F8FF", "#EE3B3B", "#FFF8DC", "#FF8C00", "#E0EEE0", "#6E8B3D", "#CAE1FF", "#104E8B", "#030303", "#EE6A50", "#00688B", "#66CD00", "#CDC0B0", "#008B00", "#0000FF", "#EED5B7", "#20B2AA", "#FF34B3", "#E6E6FA", "#CDCDB4", "#EEB422", "#6495ED", "#00688B", "#B3B3B3", "#4A4A4A", "#AB82FF", "#FFFF00", "#00C5CD", "#FFE4E1", "#000080", "#8B2500", "#4EEE94", "#EE799F")
+myColors34 <- myColors34[1:20]
+
+names(myColors34) <- sort(unique(c(unique(tax_table(migratory18S_relab)[,10]), tax_table(migratoryCOI_relab)[,10])))
+
+
+migratory18S_plot_cycle_relab <- cycle_migrators(migratory18S_relab) + 
+  #facet_wrap(.~Cycle, ncol = 4) + 
+  theme(strip.text = element_blank()) +  
+ # theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = myColors34, name = "Family") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL)+
+  guides(fill = guide_legend(ncol = 1)) + 
+  ggtitle("18S Asexual Reads") + ylab("Relative Abundance")
+migratory18S_plot_cycle_relab
+
+migratoryCOI_plot_cycle_relab <- cycle_migrators(migratoryCOI_relab) + 
+ # facet_wrap(.~Cycle, ncol = 4) + 
+  theme(strip.text = element_blank()) +  
+ # theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = myColors34, name = "Family") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL) +
+  guides(fill = guide_legend(ncol = 1)) + 
+  ggtitle("COI Asexual Reads") + ylab("Relative Abundance")
+migratoryCOI_plot_cycle_relab
+
+migrators_cycle <- ggarrange(migratory18S_cycle_pa_plot, migratory18S_plot_cycle_relab, migratoryCOI_cycle_pa_plot, migratoryCOI_plot_cycle_relab, ncol = 2, nrow = 2, common.legend = TRUE, legend = "right", labels = "auto", align = "hv")
+migrators_cycle
+
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/asexual.pdf", height =6, width = 8)
+migrators_cycle
+dev.off()
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/asexual.jpeg", height =6, width = 8, unit = "in", quality = 100, res = 300)
+migrators_cycle
+dev.off()
+```
+
+
+
+
+```{r diet counts and proportion}
+
+cycle_feeding <- function (physeq, x = "Sample", y = "Abundance", 
+  title = NULL, facet_grid = NULL, w = "binwidth") {
+  mdf = psmelt(physeq)
+  p <- ggplot(mdf) + 
+    geom_bar(aes(x = Sample, y = Abundance, fill = Diet), stat = "identity") + 
+    theme_bw() + 
+    scale_fill_manual(values = c('#e6194B', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', '#469990', '#dcbeff', '#9A6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#a9a9a9', '#ffffff', '#000000')) +
+    labs(x = "Cycle", y = "OTU Count") +
+  geom_hline(yintercept = 0, size = 0.2) 
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(facet_grid)
+  }
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+
+sample_data(ZHAN)$CycleChar <- paste("Cycle", sample_data(ZHAN)$Cycle)
+sample_data(COI)$CycleChar <- paste("Cycle", sample_data(COI)$Cycle)
+
+
+migratory18S <- subset_taxa(ZHAN, Diet %in% c("Carnivore", "Omnivore", "Herbivore", ""))
+migratoryCOI <- subset_taxa(COI, Diet %in% c("Carnivore", "Omnivore", "Herbivore", ""))
+
+migratory18S <- filter_taxa(migratory18S, function(x) sum(x) > 0, TRUE)
+migratoryCOI <- filter_taxa(migratoryCOI, function(x) sum(x) > 0, TRUE)
+
+migratory18S_cycle <- merge_samples(migratory18S, "CycleChar")
+migratoryCOI_cycle <- merge_samples(migratoryCOI, "CycleChar")
+
+migratory18S_cycle_pa <- phyloseq_standardize_otu_abundance(migratory18S_cycle, method = "pa") #reconvert to pa b/c merging samples added the counts together
+migratoryCOI_cycle_pa <- phyloseq_standardize_otu_abundance(migratoryCOI_cycle, method = "pa")
+
+tax_table(migratory18S_cycle_pa) <- tax_table(migratory18S_cycle_pa)[,c("Diet", "Transparency")]
+tax_table(migratoryCOI_cycle_pa) <- tax_table(migratoryCOI_cycle_pa)[,c("Diet", "Transparency")]
+
+tax_table(migratory18S_cycle_pa)[,1][tax_table(migratory18S_cycle_pa)[,1]==""] <- "Unknown"
+tax_table(migratoryCOI_cycle_pa)[,1][tax_table(migratoryCOI_cycle_pa)[,1]==""] <- "Unknown"
+migratory18S_cycle_pa <- tax_glom(migratory18S_cycle_pa, taxrank = "Diet")
+migratoryCOI_cycle_pa <- tax_glom(migratoryCOI_cycle_pa, taxrank = "Diet")
+
+
+
+myColorsdiet <- c("#CD2626", "#0000EE", "#8A2BE2", "#8B8378")
+
+names(myColorsdiet) <- sort(unique(c(unique(tax_table(migratory18S_cycle_pa)[,1]), tax_table(migratoryCOI_cycle_pa)[,1])))
+
+
+migratory18S_cycle_pa_plot <- cycle_feeding(migratory18S_cycle_pa) + 
+  #facet_wrap(.~Cycle, ncol = 4) + 
+  theme(strip.text = element_blank()) +  
+ # theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = myColorsdiet, name = "Diet") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL)+
+  guides(fill = guide_legend(ncol = 1)) + 
+  ggtitle("18S ASV Richness") + 
+  ylab("# of OTUs")
+migratory18S_cycle_pa_plot
+
+migratoryCOI_cycle_pa_plot <- cycle_feeding(migratoryCOI_cycle_pa) + 
+ # facet_wrap(.~Cycle, ncol = 4) + 
+  theme(strip.text = element_blank()) +  
+ # theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = myColorsdiet, name = "Diet") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL) +
+  guides(fill = guide_legend(ncol = 1)) + 
+  ggtitle("COI OTU Richness")+ 
+  ylab("# of OTUs")
+migratoryCOI_cycle_pa_plot
+
+migrators_cycle <- ggarrange(migratory18S_cycle_pa_plot, migratoryCOI_cycle_pa_plot, common.legend = TRUE, legend = "right", align = "hv")
+migrators_cycle
+
+
+migratory18S_cycle <- merge_samples(ZHAN, "CycleChar")
+migratoryCOI_cycle <- merge_samples(COI, "CycleChar")
+
+migratory18S_relab <- subset_taxa(transform_sample_counts(migratory18S_cycle, function(x) x / sum(x) ), Diet %in% c("Carnivore", "Omnivore", "Herbivore", ""))
+migratoryCOI_relab <- subset_taxa(transform_sample_counts(migratoryCOI_cycle, function(x) x / sum(x) ), Diet %in% c("Carnivore", "Omnivore", "Herbivore", ""))
+
+migratory18S_relab <- transform_sample_counts(subset_taxa(migratory18S_cycle, Diet %in% c("Carnivore", "Omnivore", "Herbivore")), function(x) x / sum(x) )
+migratoryCOI_relab <- transform_sample_counts(subset_taxa(migratoryCOI_cycle, Diet %in% c("Carnivore", "Omnivore", "Herbivore")), function(x) x / sum(x) )
+
+
+migratory18S_relab <- filter_taxa(migratory18S_relab, function(x) sum(x) > 0, TRUE)
+migratoryCOI_relab <- filter_taxa(migratoryCOI_relab, function(x) sum(x) > 0, TRUE)
+
+tax_table(migratory18S_relab) <- tax_table(migratory18S_relab)[,c("Diet", "Transparency")]
+tax_table(migratoryCOI_relab) <- tax_table(migratoryCOI_relab)[,c("Diet", "Transparency")]
+
+tax_table(migratory18S_relab)[,1][tax_table(migratory18S_relab)[,1]==""] <- "Unknown"
+tax_table(migratoryCOI_relab)[,1][tax_table(migratoryCOI_relab)[,1]==""] <- "Unknown"
+
+migratory18S_relab <- tax_glom(migratory18S_relab, taxrank = "Diet")
+migratoryCOI_relab <- tax_glom(migratoryCOI_relab, taxrank = "Diet")
+
+
+
+
+
+myColorsdiet <- c("#CD2626", "#0000EE", "#8A2BE2", "#8B8378")
+
+names(myColorsdiet) <- sort(unique(c(unique(tax_table(migratory18S_relab)[,1]), tax_table(migratoryCOI_relab)[,1])))
+
+migratory18S_plot_cycle_relab <- cycle_feeding(migratory18S_relab) + 
+  #facet_wrap(.~Cycle, ncol = 4) + 
+  theme(strip.text = element_blank()) +  
+ # theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = myColorsdiet, name = "Diet") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL)+
+  guides(fill = guide_legend(ncol = 1)) + 
+  ggtitle("18S Proportion Diet") + ylab("Relative Abundance")
+migratory18S_plot_cycle_relab
+
+migratoryCOI_plot_cycle_relab <- cycle_feeding(migratoryCOI_relab) + 
+ # facet_wrap(.~Cycle, ncol = 4) + 
+  theme(strip.text = element_blank()) +  
+ # theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = myColorsdiet, name = "Diet") +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL) +
+  guides(fill = guide_legend(ncol = 1)) + 
+  ggtitle("COI Proportion Diet") + ylab("Relative Abundance")
+migratoryCOI_plot_cycle_relab
+
+migrators_cycle <- ggarrange(migratory18S_cycle_pa_plot, migratory18S_plot_cycle_relab, migratoryCOI_cycle_pa_plot, migratoryCOI_plot_cycle_relab, ncol = 2, nrow = 2, common.legend = TRUE, legend = "right", labels = "auto", align = "hv")
+migrators_cycle
+
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/diet.pdf", height =6, width = 8)
+migrators_cycle
+dev.off()
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/diet.jpeg", height =6, width = 8, unit = "in", quality = 100, res = 300)
+migrators_cycle
+dev.off()
+```
+
+
+```{r size 18S and COI barplots}
+#merge samples by cycle
+sample_data(ZHAN)$CycleChar <- paste("Cycle", sample_data(ZHAN)$Cycle)
+ZHANcycles <- merge_samples(ZHAN, group = "CycleChar", fun = sum)
+tax_table(ZHANcycles)[,20] <- NA
+tax_table(ZHANcycles)[,20][as.numeric(tax_table(ZHANcycles)[,15]) < 1] <- "0 - 1mm"
+tax_table(ZHANcycles)[,20][as.numeric(tax_table(ZHANcycles)[,15]) > 1] <- "1 - 2mm"
+tax_table(ZHANcycles)[,20][as.numeric(tax_table(ZHANcycles)[,15]) > 2] <- "2 - 5mm"
+tax_table(ZHANcycles)[,20][as.numeric(tax_table(ZHANcycles)[,15]) > 5] <- "5 - 10mm"
+tax_table(ZHANcycles)[,20][as.numeric(tax_table(ZHANcycles)[,15]) > 10] <- "> 10mm"
+tax_table(ZHANcycles)[,20][is.na(tax_table(ZHANcycles)[,15])] <- "Unknown"
+
+tax_table(ZHANcycles)[,15] <- as.numeric(tax_table(ZHANcycles)[,15])
+
+
+# merge taxa by size
+tax_table(ZHANcycles) <- tax_table(ZHANcycles)[,c("DVMBehavior", "MaxSize")]
+ZHANcyclesglom <- tax_glom(ZHANcycles, taxrank = "DVMBehavior")
+taxa_names(ZHANcyclesglom) <- tax_table(ZHANcyclesglom)[,c("DVMBehavior")]
+
+# convert to relative abundance
+ZHANcyclesra <- transform_sample_counts(ZHANcyclesglom, function(x) x / sum(x) )
+sample_names(ZHANcyclesra) <- c("1", "2", "3", "4")
+ZHANsize <- plot_bar(ZHANcyclesra, fill = "DVMBehavior", x = "Sample") + 
+  theme_bw() + 
+  xlab(NULL) + 
+  ylab(NULL) +
+  labs(fill = "Size Class")
+
+ZHANsize
+
+
+#used psmelt
+physeqdf <- psmelt(ZHANcyclesra)
+#Forced the levels, following code above
+temp <- c("0 - 1mm", "1 - 2mm", "2 - 5mm", "5 - 10mm", "> 10mm", "Unknown")
+physeqdf$Size <- factor(physeqdf$DVMBehavior, levels = c(temp))
+#worked
+ZHANsize <- ggplot(physeqdf[order(physeqdf$Size),], aes(x=Sample, y=Abundance, fill=Size, )) + geom_bar(stat = "identity", color = "black")+ ylab("Proportion of Reads") + xlab("Cycle") + theme_bw()+ scale_fill_manual(values = c("#8B636C", "#CD919E", "#EEA9B8", "#FAD2DA", "#FAE6EA", "#382227"), name = "Size Range")
+
+ZHANsize
+
+##COI 
+#merge samples by cycle
+sample_data(COI)$CycleChar <- paste("Cycle", sample_data(COI)$Cycle)
+COIcycles <- merge_samples(COI, group = "CycleChar", fun = sum)
+
+tax_table(COIcycles)[,20] <- NA
+tax_table(COIcycles)[,20][as.numeric(tax_table(COIcycles)[,15]) < 1] <- "0 - 1mm"
+tax_table(COIcycles)[,20][as.numeric(tax_table(COIcycles)[,15]) > 1] <- "1 - 2mm"
+tax_table(COIcycles)[,20][as.numeric(tax_table(COIcycles)[,15]) > 2] <- "2 - 5mm"
+tax_table(COIcycles)[,20][as.numeric(tax_table(COIcycles)[,15]) > 5] <- "5 - 10mm"
+tax_table(COIcycles)[,20][as.numeric(tax_table(COIcycles)[,15]) > 10] <- "> 10mm"
+tax_table(COIcycles)[,20][is.na(tax_table(COIcycles)[,15])] <- "Unknown"
+
+tax_table(COIcycles)[,15] <- as.numeric(tax_table(COIcycles)[,15])
+
+
+# merge taxa by transparency
+tax_table(COIcycles) <- tax_table(COIcycles)[,c("DVMBehavior", "MaxSize")]
+COIcyclesglom <- tax_glom(COIcycles, taxrank = "DVMBehavior")
+taxa_names(COIcyclesglom) <- tax_table(COIcyclesglom)[,c("DVMBehavior")]
+
+# convert to relative abundance
+COIcyclesra <- transform_sample_counts(COIcyclesglom, function(x) x / sum(x) )
+sample_names(COIcyclesra) <- c("1", "2", "3", "4")
+
+#used psmelt
+physeqdf <- psmelt(COIcyclesra)
+#Forced the levels, following code above
+temp <- c("0 - 1mm", "1 - 2mm", "2 - 5mm", "5 - 10mm", "> 10mm", "Unknown")
+physeqdf$Size <- factor(physeqdf$DVMBehavior, levels = c(temp))
+#worked
+COIsize <- ggplot(physeqdf[order(physeqdf$Size),], aes(x=Sample, y=Abundance, fill=Size, )) + geom_bar(stat = "identity", color = "black")+ylab("Proportion of Reads") + xlab("Cycle") + theme_bw()+ scale_fill_manual(values = c("#8B636C", "#CD919E", "#EEA9B8", "#FAD2DA", "#FAE6EA", "#382227"), name = "Size Range")
+
+
+bothsize <- ggarrange(ZHANsize, COIsize, ncol = 1, nrow = 2, common.legend = T, legend = "right", align = "hv")
+bothsizelab <- annotate_figure(bothsize, left = text_grob("Relative abundance", rot = 90), bottom = text_grob("Cycle", rot = 0))
+bothsizelab
+  
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/size.pdf", height =4.8, width = 8.5)
+bothsizelab
+dev.off()
+
+### SIZE upper 200m
+#merge samples by cycle
+sample_data(ZHAN)$CycleChar <- paste("Cycle", sample_data(ZHAN)$Cycle)
+ZHANcycles <- merge_samples(subset_samples(ZHAN, depthmean < 200), group = "CycleChar", fun = sum)
+tax_table(ZHANcycles)[,20] <- NA
+tax_table(ZHANcycles)[,20][as.numeric(tax_table(ZHANcycles)[,15]) < 1] <- "0 - 1mm"
+tax_table(ZHANcycles)[,20][as.numeric(tax_table(ZHANcycles)[,15]) > 1] <- "1 - 2mm"
+tax_table(ZHANcycles)[,20][as.numeric(tax_table(ZHANcycles)[,15]) > 2] <- "2 - 5mm"
+tax_table(ZHANcycles)[,20][as.numeric(tax_table(ZHANcycles)[,15]) > 5] <- "5 - 10mm"
+tax_table(ZHANcycles)[,20][as.numeric(tax_table(ZHANcycles)[,15]) > 10] <- "> 10mm"
+tax_table(ZHANcycles)[,20][is.na(tax_table(ZHANcycles)[,15])] <- "Unknown"
+
+tax_table(ZHANcycles)[,15] <- as.numeric(tax_table(ZHANcycles)[,15])
+
+
+# merge taxa by transparency
+tax_table(ZHANcycles) <- tax_table(ZHANcycles)[,c("DVMBehavior", "MaxSize")]
+ZHANcyclesglom <- tax_glom(ZHANcycles, taxrank = "DVMBehavior")
+taxa_names(ZHANcyclesglom) <- tax_table(ZHANcyclesglom)[,c("DVMBehavior")]
+
+# convert to relative abundance
+ZHANcyclesra <- transform_sample_counts(ZHANcyclesglom, function(x) x / sum(x) )
+sample_names(ZHANcyclesra) <- c("1", "2", "3", "4")
+ZHANsizeepi <- plot_bar(ZHANcyclesra, fill = "DVMBehavior", x = "Sample") + 
+  theme_bw() + 
+  xlab(NULL) + 
+  ylab(NULL) +
+  labs(fill = "Size Class")
+
+ZHANsizeepi
+
+
+#used psmelt
+physeqdf <- psmelt(ZHANcyclesra)
+#Forced the levels, following code above
+temp <- c("0 - 1mm", "1 - 2mm", "2 - 5mm", "5 - 10mm", "> 10mm", "Unknown")
+physeqdf$Size <- factor(physeqdf$DVMBehavior, levels = c(temp))
+#worked
+ZHANsizeepi <- ggplot(physeqdf[order(physeqdf$Size),], aes(x=Sample, y=Abundance, fill=Size, )) + geom_bar(stat = "identity", color = "black") + ylab("Proportion of Reads") + xlab("Cycle") + theme_bw()+ scale_fill_manual(values = c("#8B636C", "#CD919E", "#EEA9B8", "#FAD2DA", "#FAE6EA", "#382227"), name = "Size Range")
+
+ZHANsizeepi
+
+##COI 
+#merge samples by cycle
+sample_data(COI)$CycleChar <- paste("Cycle", sample_data(COI)$Cycle)
+COIcycles <- merge_samples(subset_samples(COI, depthmean < 200), group = "CycleChar", fun = sum)
+
+tax_table(COIcycles)[,20] <- NA
+tax_table(COIcycles)[,20][as.numeric(tax_table(COIcycles)[,15]) < 1] <- "0 - 1mm"
+tax_table(COIcycles)[,20][as.numeric(tax_table(COIcycles)[,15]) > 1] <- "1 - 2mm"
+tax_table(COIcycles)[,20][as.numeric(tax_table(COIcycles)[,15]) > 2] <- "2 - 5mm"
+tax_table(COIcycles)[,20][as.numeric(tax_table(COIcycles)[,15]) > 5] <- "5 - 10mm"
+tax_table(COIcycles)[,20][as.numeric(tax_table(COIcycles)[,15]) > 10] <- "> 10mm"
+tax_table(COIcycles)[,20][is.na(tax_table(COIcycles)[,15])] <- "Unknown"
+
+tax_table(COIcycles)[,15] <- as.numeric(tax_table(COIcycles)[,15])
+
+
+# merge taxa by transparency
+tax_table(COIcycles) <- tax_table(COIcycles)[,c("DVMBehavior", "MaxSize")]
+COIcyclesglom <- tax_glom(COIcycles, taxrank = "DVMBehavior")
+taxa_names(COIcyclesglom) <- tax_table(COIcyclesglom)[,c("DVMBehavior")]
+
+# convert to relative abundance
+COIcyclesra <- transform_sample_counts(COIcyclesglom, function(x) x / sum(x) )
+sample_names(COIcyclesra) <- c("1", "2", "3", "4")
+
+#used psmelt
+physeqdf <- psmelt(COIcyclesra)
+#Forced the levels, following code above
+temp <- c("0 - 1mm", "1 - 2mm", "2 - 5mm", "5 - 10mm", "> 10mm", "Unknown")
+physeqdf$Size <- factor(physeqdf$DVMBehavior, levels = c(temp))
+#worked
+COIsizeepi <- ggplot(physeqdf[order(physeqdf$Size),], aes(x=Sample, y=Abundance, fill=Size, )) + geom_bar(stat = "identity", color = "black")+ ylab("Proportion of Reads") + xlab("Cycle") + theme_bw() + scale_fill_manual(values = c("#8B636C", "#CD919E", "#EEA9B8", "#FAD2DA", "#FAE6EA", "#382227"), name = "Size Range")
+COIsizeepi
+
+bothsizeepi <- ggarrange(ZHANsizeepi, COIsizeepi, ncol = 1, nrow = 2, common.legend = T, legend = "right", align = "hv")
+bothsizeepilab <- annotate_figure(bothsizeepi, left = text_grob("Relative abundance", rot = 90), bottom = text_grob("Cycle", rot = 0))
+bothsizeepilab
+  
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/sizeepi.pdf", height =4.8, width = 8.5)
+bothsizeepilab
+dev.off()
+
+
+allsize <- ggarrange(ZHANsizeepi + ggtitle("0-200m, 18S") + theme(plot.title = element_text(size = 10)), COIsizeepi+ ggtitle("0-200m, COI")+ theme(plot.title = element_text(size = 10)), ZHANsize+ ggtitle("0-400m, 18S")+ theme(plot.title = element_text(size = 10)), COIsize+ ggtitle("0-400m, COI")+ theme(plot.title = element_text(size = 10)), ncol = 2, nrow = 2, common.legend = T, legend = "right", align = "hv", labels = "auto")
+allsizelab <- annotate_figure(allsize, left = text_grob("Relative abundance", rot = 90), bottom = text_grob("Cycle", rot = 0))
+allsize
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/size4.pdf", height =4.8, width = 8.5)
+allsizelab
+dev.off()
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/size4.jpeg", height =4.8, width = 8.5, units = "in", quality = 100, res = 300)
+allsizelab
+dev.off()
+
+```
+

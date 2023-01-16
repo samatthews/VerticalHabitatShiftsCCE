@@ -1,0 +1,1171 @@
+---
+title: "mean depth of occurence by taxon"
+output: html_document
+---
+
+```{r libraries}
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+#library(clustsig) not available anymore
+library(ggdendro)
+library(gridExtra)
+library(stringr)
+library(dendextend)
+library(Biostrings)
+library(insect)
+library(ape)
+library(seqinr)
+library(decontam)
+library(lmodel2)
+library(mgcv)
+library(goeveg)
+library(metagMisc)
+library(magrittr)
+library(ggpubr)
+library(RColorBrewer)
+
+```
+
+How does mean depth of occurence during the day and at night change across-shore? 
+- filter out occurences that are less than 5% of the total abundance of the OTU
+- slice by taxon
+- do some taxa have greater or less similarity? How does that relate to niche partitioning? 
+- how does that correlate with environmental variables
+
+
+```{r}
+load("~/Documents/Chapter1/for_ms/COI_v3biom_ZOOPLANKTON.Rdat")
+load("~/Documents/Chapter1/for_ms/18S_v3biom_ZOOPLANKTON.Rdat")
+
+```
+
+```{r filter and merge}
+#remove non-P1604 data
+#merge replicates (PCR and subsample)
+#replace metadata
+
+COI_bothtax <- COIclean_zooplankton
+
+COI_bothtax <- subset_samples(COI_bothtax, sample_data(COI_bothtax)$Cruise == "P1604")
+COI_bothtax <- subset_samples(COI_bothtax, sample_data(COI_bothtax)$Net != "Ext. Control")
+#COI_bothtax <- rarefy_even_depth(COI_bothtax, sample.size = 10016)
+
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Net == "Net 1"] <- "350-400" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Net == "Net 2"] <- "300-350" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Net == "Net 3"] <- "250-300" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Net == "Net 4"] <- "200-250" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Net == "Net 5"] <- "150-200" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Net == "Net 6"] <- "100-150" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Net == "Net 7"] <- "50-100" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Net == "Net 8"] <- "0-50" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Cycle == "Cycle 2" & sample_data(COI_bothtax)$Diel == "night" & sample_data(COI_bothtax)$Net == "Net 1"] <- "350-400" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Cycle == "Cycle 2" & sample_data(COI_bothtax)$Diel == "night" & sample_data(COI_bothtax)$Net == "Net 2"] <- "250-350" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Cycle == "Cycle 2" & sample_data(COI_bothtax)$Diel == "night" & sample_data(COI_bothtax)$Net == "Net 3"] <- "200-250"  
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Cycle == "Cycle 2" & sample_data(COI_bothtax)$Diel == "night" & sample_data(COI_bothtax)$Net == "Net 4"] <- "150-200"
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Cycle == "Cycle 2" & sample_data(COI_bothtax)$Diel == "night" & sample_data(COI_bothtax)$Net == "Net 5"] <- "100-150"
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Cycle == "Cycle 2" & sample_data(COI_bothtax)$Diel == "night" & sample_data(COI_bothtax)$Net == "Net 6"] <- "50-100" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Cycle == "Cycle 2" & sample_data(COI_bothtax)$Diel == "night" & sample_data(COI_bothtax)$Net == "Net 7"] <- "0-50" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Cycle == "Cycle 2" & sample_data(COI_bothtax)$Diel == "night" & sample_data(COI_bothtax)$Net == "Net 8"] <- "0-0" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Cycle == "Cycle 4" & sample_data(COI_bothtax)$Net == "Net 1"] <- "175-200"
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Cycle == "Cycle 4" & sample_data(COI_bothtax)$Net == "Net 2"] <- "150-175" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Cycle == "Cycle 4" & sample_data(COI_bothtax)$Net == "Net 3"] <- "125-150" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Cycle == "Cycle 4" & sample_data(COI_bothtax)$Net == "Net 4"] <- "100-125" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Cycle == "Cycle 4" & sample_data(COI_bothtax)$Net == "Net 5"] <- "75-100" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Cycle == "Cycle 4" & sample_data(COI_bothtax)$Net == "Net 6"] <- "50-75" 
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Cycle == "Cycle 4" & sample_data(COI_bothtax)$Net == "Net 7"] <- "25-50"  
+sample_data(COI_bothtax)$depthtarget[sample_data(COI_bothtax)$Cycle == "Cycle 4" & sample_data(COI_bothtax)$Net == "Net 8"] <- "0-25"  
+
+sample_data(COI_bothtax)$metadatamerge <- mapply(paste, sample_data(COI_bothtax)$Cycle, sample_data(COI_bothtax)$Net, sample_data(COI_bothtax)$Diel, sample_data(COI_bothtax)$Tow.2, sample_data(COI_bothtax)$depthtarget) 
+COI_bothtax <- merge_samples(COI_bothtax, "metadatamerge") 
+
+sample_data(COI_bothtax)$Cycle <- as.character(strsplit(sample_names(COI_bothtax), " ", ) %>% sapply(extract2, 2))
+sample_data(COI_bothtax)$Net <- as.character(strsplit(sample_names(COI_bothtax), " ", ) %>% sapply(extract2, 4))
+sample_data(COI_bothtax)$Diel <- as.character(strsplit(sample_names(COI_bothtax), " ", ) %>% sapply(extract2, 5))
+sample_data(COI_bothtax)$Tow.2 <- as.character(strsplit(sample_names(COI_bothtax), " ", ) %>% sapply(extract2, 7))
+sample_data(COI_bothtax)$Depth <- as.character(strsplit(sample_names(COI_bothtax), " ", ) %>% sapply(extract2, 8))
+COI <- COI_bothtax
+
+sample_data(COI)$depthtarget[sample_data(COI)$Net == 1] <- "350-400" 
+sample_data(COI)$depthtarget[sample_data(COI)$Net == 2] <- "300-350" 
+sample_data(COI)$depthtarget[sample_data(COI)$Net == 3] <- "250-300" 
+sample_data(COI)$depthtarget[sample_data(COI)$Net == 4] <- "200-250" 
+sample_data(COI)$depthtarget[sample_data(COI)$Net == 5] <- "150-200" 
+sample_data(COI)$depthtarget[sample_data(COI)$Net == 6] <- "100-150" 
+sample_data(COI)$depthtarget[sample_data(COI)$Net == 7] <- "50-100" 
+sample_data(COI)$depthtarget[sample_data(COI)$Net == 8] <- "0-50" 
+sample_data(COI)$depthtarget[sample_data(COI)$Cycle == 2 & sample_data(COI)$Diel == "night" & sample_data(COI)$Net == 1] <- "350-400" 
+sample_data(COI)$depthtarget[sample_data(COI)$Cycle == 2 & sample_data(COI)$Diel == "night" & sample_data(COI)$Net == 2] <- "250-350" 
+sample_data(COI)$depthtarget[sample_data(COI)$Cycle == 2 & sample_data(COI)$Diel == "night" & sample_data(COI)$Net == 3] <- "200-250"  
+sample_data(COI)$depthtarget[sample_data(COI)$Cycle == 2 & sample_data(COI)$Diel == "night" & sample_data(COI)$Net == 4] <- "150-200"
+sample_data(COI)$depthtarget[sample_data(COI)$Cycle == 2 & sample_data(COI)$Diel == "night" & sample_data(COI)$Net == 5] <- "100-150"
+sample_data(COI)$depthtarget[sample_data(COI)$Cycle == 2 & sample_data(COI)$Diel == "night" & sample_data(COI)$Net == 6] <- "50-100" 
+sample_data(COI)$depthtarget[sample_data(COI)$Cycle == 2 & sample_data(COI)$Diel == "night" & sample_data(COI)$Net == 7] <- "0-50" 
+sample_data(COI)$depthtarget[sample_data(COI)$Cycle == 2 & sample_data(COI)$Diel == "night" & sample_data(COI)$Net == 8] <- "0-0" 
+sample_data(COI)$depthtarget[sample_data(COI)$Cycle == 4 & sample_data(COI)$Net == 1] <- "175-200"
+sample_data(COI)$depthtarget[sample_data(COI)$Cycle == 4 & sample_data(COI)$Net == 2] <- "150-175" 
+sample_data(COI)$depthtarget[sample_data(COI)$Cycle == 4 & sample_data(COI)$Net == 3] <- "125-150" 
+sample_data(COI)$depthtarget[sample_data(COI)$Cycle == 4 & sample_data(COI)$Net == 4] <- "100-125" 
+sample_data(COI)$depthtarget[sample_data(COI)$Cycle == 4 & sample_data(COI)$Net == 5] <- "75-100" 
+sample_data(COI)$depthtarget[sample_data(COI)$Cycle == 4 & sample_data(COI)$Net == 6] <- "50-75" 
+sample_data(COI)$depthtarget[sample_data(COI)$Cycle == 4 & sample_data(COI)$Net == 7] <- "25-50"  
+sample_data(COI)$depthtarget[sample_data(COI)$Cycle == 4 & sample_data(COI)$Net == 8] <- "0-25"  
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "350-400"] <- "350-400"
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "300-350"] <- "300-350"
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "250-350"] <- "250-350"
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "250-300"] <- "250-300"
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "200-250"] <- "200-250"
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "150-200"] <- "150-200"
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "100-150"] <- "100-150"
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "50-100" ] <- "50-100"
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "0-50"   ] <- "0-50" 
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "0-0"   ] <- "0-0" 
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "175-200" ] <- "150-200"
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "150-175" ] <- "150-200"
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "125-150" ] <- "100-150"
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "100-125" ] <- "100-150"
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "75-100"  ] <- "50-100"
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "50-75"   ] <- "50-100"
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "25-50"   ] <- "0-50"
+sample_data(COI)$depthbin[sample_data(COI)$depthtarget == "0-25"    ] <- "0-50" 
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "350-400" ] <- 375
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "300-350" ] <- 325
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "250-350" ] <- 300
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "250-300" ] <- 275
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "200-250" ] <- 225
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "150-200" ] <- 175
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "100-150" ] <- 125
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "50-100"  ] <- 75
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "0-50"    ] <- 25
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "0-0"    ] <- 0
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "175-200" ] <- 187
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "150-175" ] <- 162
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "125-150" ] <- 137
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "100-125" ] <- 112
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "75-100"  ] <- 87
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "50-75"   ] <- 62
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "25-50"   ] <- 37
+sample_data(COI)$depthmean[sample_data(COI)$depthtarget == "0-25"    ] <- 12
+sample_data(COI)$binwidth[sample_data(COI)$Cycle == "1"] <- 50
+sample_data(COI)$binwidth[sample_data(COI)$Cycle == "2"] <- 50
+sample_data(COI)$binwidth[sample_data(COI)$Cycle == "3"] <- 50
+sample_data(COI)$binwidth[sample_data(COI)$Cycle == "4"] <- 25
+sample_data(COI)$binwidth[sample_data(COI)$depthbin == "250-350"] <- 100
+sample_data(COI)$binwidth[sample_data(COI)$depthbin == "0-0"] <- 0
+
+
+
+```
+
+
+```{r load zooscan}
+##load zooscandata database
+zooscan <- read.csv("~/Documents/Chapter1/zooscandata_24Mar2020_updatedbiomass/P1604_MOCNESS_07Feb2020.csv", sep=",")
+
+zooscan$Cycle[zooscan$Cycle == 1] <- "Cycle 1"
+zooscan$Cycle[zooscan$Cycle == 2] <- "Cycle 2"
+zooscan$Cycle[zooscan$Cycle == 3] <- "Cycle 3"
+zooscan$Cycle[zooscan$Cycle == 4] <- "Cycle 4"
+
+zooscan$DepthRangeTarget[zooscan$Net == 1 & zooscan$Cycle == "Cycle 1"] <- "400-350"
+zooscan$DepthRangeTarget[zooscan$Net == 2 & zooscan$Cycle == "Cycle 1"] <- "350-300"
+zooscan$DepthRangeTarget[zooscan$Net == 3 & zooscan$Cycle == "Cycle 1"] <- "300-250"
+zooscan$DepthRangeTarget[zooscan$Net == 4 & zooscan$Cycle == "Cycle 1"] <- "250-200"
+zooscan$DepthRangeTarget[zooscan$Net == 5 & zooscan$Cycle == "Cycle 1"] <- "200-150"
+zooscan$DepthRangeTarget[zooscan$Net == 6 & zooscan$Cycle == "Cycle 1"] <- "150-100"
+zooscan$DepthRangeTarget[zooscan$Net == 7 & zooscan$Cycle == "Cycle 1"] <- "100-50"
+zooscan$DepthRangeTarget[zooscan$Net == 8 & zooscan$Cycle == "Cycle 1"] <- "50-0"
+
+zooscan$DepthRangeTarget[zooscan$Net == 1 & zooscan$Cycle == "Cycle 2"] <- "400-350"
+zooscan$DepthRangeTarget[zooscan$Net == 2 & zooscan$Cycle == "Cycle 2"] <- "350-250"
+zooscan$DepthRangeTarget[zooscan$Net == 3 & zooscan$Cycle == "Cycle 2"] <- "250-200"
+zooscan$DepthRangeTarget[zooscan$Net == 4 & zooscan$Cycle == "Cycle 2"] <- "200-150"
+zooscan$DepthRangeTarget[zooscan$Net == 5 & zooscan$Cycle == "Cycle 2"] <- "150-100"
+zooscan$DepthRangeTarget[zooscan$Net == 6 & zooscan$Cycle == "Cycle 2"] <- "100-50"
+zooscan$DepthRangeTarget[zooscan$Net == 7 & zooscan$Cycle == "Cycle 2"] <- "50-0"
+zooscan$DepthRangeTarget[zooscan$Net == 8 & zooscan$Cycle == "Cycle 2"] <- "0-0"
+
+zooscan$DepthRangeTarget[zooscan$Net == 1 & zooscan$Cycle == "Cycle 3"] <- "400-350"
+zooscan$DepthRangeTarget[zooscan$Net == 2 & zooscan$Cycle == "Cycle 3"] <- "350-300"
+zooscan$DepthRangeTarget[zooscan$Net == 3 & zooscan$Cycle == "Cycle 3"] <- "300-250"
+zooscan$DepthRangeTarget[zooscan$Net == 4 & zooscan$Cycle == "Cycle 3"] <- "250-200"
+zooscan$DepthRangeTarget[zooscan$Net == 5 & zooscan$Cycle == "Cycle 3"] <- "200-150"
+zooscan$DepthRangeTarget[zooscan$Net == 6 & zooscan$Cycle == "Cycle 3"] <- "150-100"
+zooscan$DepthRangeTarget[zooscan$Net == 7 & zooscan$Cycle == "Cycle 3"] <- "100-50"
+zooscan$DepthRangeTarget[zooscan$Net == 8 & zooscan$Cycle == "Cycle 3"] <- "50-0"
+
+zooscan$DepthRangeTarget[zooscan$Net == 1 & zooscan$Cycle == "Cycle 4"] <- "200-150"
+zooscan$DepthRangeTarget[zooscan$Net == 2 & zooscan$Cycle == "Cycle 4"] <- "200-150"
+zooscan$DepthRangeTarget[zooscan$Net == 3 & zooscan$Cycle == "Cycle 4"] <- "150-100"
+zooscan$DepthRangeTarget[zooscan$Net == 4 & zooscan$Cycle == "Cycle 4"] <- "150-100"
+zooscan$DepthRangeTarget[zooscan$Net == 5 & zooscan$Cycle == "Cycle 4"] <- "100-50"
+zooscan$DepthRangeTarget[zooscan$Net == 6 & zooscan$Cycle == "Cycle 4"] <- "100-50"
+zooscan$DepthRangeTarget[zooscan$Net == 7 & zooscan$Cycle == "Cycle 4"] <- "50-0"
+zooscan$DepthRangeTarget[zooscan$Net == 8 & zooscan$Cycle == "Cycle 4"] <- "50-0"
+
+#addmidpoint
+zooscan$middepth[zooscan$Net == 1 & zooscan$Cycle == "Cycle 1"] <- 375
+zooscan$middepth[zooscan$Net == 2 & zooscan$Cycle == "Cycle 1"] <- 325
+zooscan$middepth[zooscan$Net == 3 & zooscan$Cycle == "Cycle 1"] <- 275
+zooscan$middepth[zooscan$Net == 4 & zooscan$Cycle == "Cycle 1"] <- 225
+zooscan$middepth[zooscan$Net == 5 & zooscan$Cycle == "Cycle 1"] <- 175
+zooscan$middepth[zooscan$Net == 6 & zooscan$Cycle == "Cycle 1"] <- 125
+zooscan$middepth[zooscan$Net == 7 & zooscan$Cycle == "Cycle 1"] <- 75
+zooscan$middepth[zooscan$Net == 8 & zooscan$Cycle == "Cycle 1"] <- 25
+zooscan$middepth[zooscan$Net == 1 & zooscan$Cycle == "Cycle 2"] <- 375
+zooscan$middepth[zooscan$Net == 2 & zooscan$Cycle == "Cycle 2"] <- 300
+zooscan$middepth[zooscan$Net == 3 & zooscan$Cycle == "Cycle 2"] <- 225
+zooscan$middepth[zooscan$Net == 4 & zooscan$Cycle == "Cycle 2"] <- 175
+zooscan$middepth[zooscan$Net == 5 & zooscan$Cycle == "Cycle 2"] <- 125
+zooscan$middepth[zooscan$Net == 6 & zooscan$Cycle == "Cycle 2"] <- 75
+zooscan$middepth[zooscan$Net == 7 & zooscan$Cycle == "Cycle 2"] <- 25
+zooscan$middepth[zooscan$Net == 8 & zooscan$Cycle == "Cycle 2"] <- 0
+zooscan$middepth[zooscan$Net == 1 & zooscan$Cycle == "Cycle 3"] <- 375
+zooscan$middepth[zooscan$Net == 2 & zooscan$Cycle == "Cycle 3"] <- 325
+zooscan$middepth[zooscan$Net == 3 & zooscan$Cycle == "Cycle 3"] <- 275
+zooscan$middepth[zooscan$Net == 4 & zooscan$Cycle == "Cycle 3"] <- 225
+zooscan$middepth[zooscan$Net == 5 & zooscan$Cycle == "Cycle 3"] <- 175
+zooscan$middepth[zooscan$Net == 6 & zooscan$Cycle == "Cycle 3"] <- 125
+zooscan$middepth[zooscan$Net == 7 & zooscan$Cycle == "Cycle 3"] <- 75
+zooscan$middepth[zooscan$Net == 8 & zooscan$Cycle == "Cycle 3"] <- 25
+zooscan$middepth[zooscan$Net == 1 & zooscan$Cycle == "Cycle 4"] <- 188
+zooscan$middepth[zooscan$Net == 2 & zooscan$Cycle == "Cycle 4"] <- 163
+zooscan$middepth[zooscan$Net == 3 & zooscan$Cycle == "Cycle 4"] <- 138
+zooscan$middepth[zooscan$Net == 4 & zooscan$Cycle == "Cycle 4"] <- 113
+zooscan$middepth[zooscan$Net == 5 & zooscan$Cycle == "Cycle 4"] <- 88
+zooscan$middepth[zooscan$Net == 6 & zooscan$Cycle == "Cycle 4"] <- 63
+zooscan$middepth[zooscan$Net == 7 & zooscan$Cycle == "Cycle 4"] <- 38
+zooscan$middepth[zooscan$Net == 8 & zooscan$Cycle == "Cycle 4"] <- 13
+#zooscan$DepthRangeTarget <- relevel(zooscan$DepthRangeTarget, "50-0", "100-50", "150-100", "200-150", "250-200", "300-250", "350-300", "400-350")
+zooscan$DepthRangeTarget <- factor(zooscan$DepthRangeTarget, levels = c("0-0", "50-0", "100-50", "150-100", "200-150", "250-200", "300-250", "350-250", "350-300", "400-350"))
+#zooscan$DepthRangeTarget <- factor(zooscan$DepthRangeTarget,unique(zooscan$DepthRangeTarget)[c(8, 7, 6, 5, 4, 3, 2, 1)])
+
+zooscan$Net[zooscan$Net == 1] <- "Net 1"
+zooscan$Net[zooscan$Net == 2] <- "Net 2"
+zooscan$Net[zooscan$Net == 3] <- "Net 3"
+zooscan$Net[zooscan$Net == 4] <- "Net 4"
+zooscan$Net[zooscan$Net == 5] <- "Net 5"
+zooscan$Net[zooscan$Net == 6] <- "Net 6"
+zooscan$Net[zooscan$Net == 7] <- "Net 7"
+zooscan$Net[zooscan$Net == 8] <- "Net 8"
+
+
+#zooscana <- zooscan[!(zooscan$Cycle == "Cycle 2" & zooscan$Net == "Net 8"),]
+
+
+zooscan$Net <- factor(zooscan$Net,unique(zooscan$Net)[c(8, 7, 6, 5, 4, 3, 2, 1)])
+
+zooscan$Class <- as.character(paste(zooscan$Class))
+
+zooscan$Class[zooscan$Class == "appendicularia"] <- "Appendicularians"
+zooscan$Class[zooscan$Class == "bryozoan_larvae"] <- "Bryozoan Larvae"
+zooscan$Class[zooscan$Class == "chaetognatha"] <- "Chaetognaths"
+zooscan$Class[zooscan$Class == "cnidaria"] <- "Cnidarians"
+zooscan$Class[zooscan$Class == "copepoda_calanoida"] <- "Copepods, Calanoid"
+zooscan$Class[zooscan$Class == "copepoda_eucalanids"] <- "Copepods, Eucalanid"
+zooscan$Class[zooscan$Class == "copepoda_harpacticoida"] <- "Copepods, Harpacticoid"
+zooscan$Class[zooscan$Class == "copepoda_oithona_like"] <- "Copepods, Oithonid"
+zooscan$Class[zooscan$Class == "copepoda_poecilostomatoids"] <- "Copepods, Poecilostomatoid"
+zooscan$Class[zooscan$Class == "copepoda_others"] <- "Copepods, Other"
+zooscan$Class[zooscan$Class == "crustacea_others"] <- "Other crustaceans"
+zooscan$Class[zooscan$Class == "doliolids"] <- "Doliolids"
+zooscan$Class[zooscan$Class == "eggs"] <- "Eggs"
+zooscan$Class[zooscan$Class == "euphausiids"] <- "Euphausiids"
+zooscan$Class[zooscan$Class == "multiples"] <- "Multiples"
+zooscan$Class[zooscan$Class == "nauplii"] <- "Nauplii"
+zooscan$Class[zooscan$Class == "ostracods"] <- "Ostracods"
+zooscan$Class[zooscan$Class == "others"] <- " "
+zooscan$Class[zooscan$Class == "polychaete"] <- "Polychaetes"
+zooscan$Class[zooscan$Class == "pteropoda"] <- "Pteropods"
+zooscan$Class[zooscan$Class == "pyrosomes"] <- "Pyrosomes"
+zooscan$Class[zooscan$Class == "radiolarians"] <- "Radiolarians"
+zooscan$Class[zooscan$Class == "salps"] <- "Salps"
+
+
+zooscan$cycletownet <- paste(zooscan$Cycle, zooscan$Tow, zooscan$Net)
+zooscan_withab <- zooscan %>% 
+  dplyr::group_by(cycletownet) %>%
+  dplyr:: mutate(Abundancetotal.m3 = sum(Abundance....m.3., na.rm=T)) %>%
+  ungroup()
+
+zooscan_withbiomass <- zooscan_withab %>% 
+  dplyr::group_by(cycletownet) %>%
+  dplyr:: mutate(sumbiomassugCm3 = sum(Carbon_mg_sum, na.rm=T)) %>%
+  ungroup()
+
+
+biomass <- zooscan_withbiomass %>% tidyr::pivot_wider(id_cols= c("Cycle", "Net", "Tow"), names_from = Class, values_from = Carbon_mg_sum)
+biomass$Diel <- NA
+biomass$Diel[biomass$Tow == 1] <- "day"
+biomass$Diel[biomass$Tow == 2] <- "night"
+abundance <- zooscan_withab %>% tidyr::pivot_wider(id_cols= c("Cycle", "Net", "Tow"), names_from = Class, values_from = Abundance....m.3.)
+abundance$Diel <- NA
+abundance$Diel[biomass$Tow == 1] <- "day"
+abundance$Diel[biomass$Tow == 2] <- "night"
+
+```
+
+
+```{r}
+#pull out sample data, add abundance and biomass data to it 
+samplemetadata <- data.frame(sample_data(COI))
+samplemetadata <- samplemetadata[,c(2,3,4,6,7,9,10,11,12,13,14,15,27,30,31,32,33)]
+samplemetadata$names <- rownames(samplemetadata)
+
+samplemetadata$unique <- paste("Cycle", samplemetadata$Cycle, "Net", samplemetadata$Net, samplemetadata$Diel)
+abundance$unique <- paste(abundance$Cycle, abundance$Net, abundance$Diel)
+biomass$unique <- paste(biomass$Cycle, biomass$Net, biomass$Diel)
+
+zsmd <- merge(abundance, biomass, by = "unique", suffixes = c(".abund", ".bm"))
+samplemd <- merge(samplemetadata, zsmd, by = "unique", all = T) #not sure why we're missing zooscan data for net 8 cycle 2
+rownames(samplemd) <- samplemd$names
+
+sample_data(COI) <- sample_data(samplemd)
+```
+
+
+remove occurences consisting of less than 1% of the total sequences for that OTU
+```{r filter 1%}
+# remove occurences <1%
+
+COIotutab <- data.frame(otu_table(COI))
+sums <- colSums(COIotutab)
+
+#calculate 5% (cutoff for removal) of the sum of each OTU
+sum5percent <- sums * 0.05
+
+#make matrix with minimum value to retain each value in the otu table
+matrix95 <- matrix(sum5percent,ncol=length(sum5percent),nrow=nrow(COIotutab),byrow=TRUE)
+
+#remove values less than 5% of total reads
+COIotutab_ab <- replace(COIotutab, COIotutab < matrix95, 0)
+
+COI_1perc_otutab <- otu_table(COIotutab_ab, taxa_are_rows = F)
+taxa_names(COI_1perc_otutab) <- taxa_names(COI) #have to rename b/c the switch to a matrix added X to the beginning of the numbers, and mismatching taxa names are silently dropped by merge_phyloseq()
+COI_1perc_tax <- tax_table(COI)
+COI_1perc_sampdat <- sample_data(COI)
+COI_1perc <- merge_phyloseq(COI_1perc_otutab, COI_1perc_tax, COI_1perc_sampdat)
+COI_1perc_nona <- subset_taxa(COI_1perc, Kingdom != "")
+
+ntaxa(COI)
+ntaxa(COI_1perc_nona)
+
+```
+
+
+
+calculate mdo using mean depth of occurence instead of weighted mean
+since weighted means are relative, not absolute
+could also weight each depth/group by zooscan data but that might introduce even more sources of bias 
+
+
+```{r define function for mean depth of occurence}
+calc_mdo <- function(n){
+  nightmdo <- numeric(n)
+  daymdo <- numeric(n)
+  namedotu <- character(n)
+  for (i in 1:n) {
+    nightmdo[i] <- ((subsampled_netsums[i,1]*net_depths[[1]]+subsampled_netsums[i,2]*net_depths[[2]]+subsampled_netsums[i,3]*net_depths[[3]]+subsampled_netsums[i,4]*net_depths[[4]]+subsampled_netsums[i,5]*net_depths[[5]]+subsampled_netsums[i,6]*net_depths[[6]]+subsampled_netsums[i,7]*net_depths[[7]]+subsampled_netsums[i,8]*net_depths[[8]])/(sum(subsampled_netsums[i,])))
+    namedotu[i] <- row.names(subsampled_netsums)[[i]]
+  }
+  data.frame(namedotu, nightmdo, stringsAsFactors = FALSE)
+}
+
+calc_mdo7 <- function(n){
+  nightmdo <- numeric(n)
+  daymdo <- numeric(n)
+  namedotu <- character(n)
+  for (i in 1:n) {
+    nightmdo[i] <- ((subsampled_netsums[i,1]*net_depths[[1]]+subsampled_netsums[i,2]*net_depths[[2]]+subsampled_netsums[i,3]*net_depths[[3]]+subsampled_netsums[i,4]*net_depths[[4]]+subsampled_netsums[i,5]*net_depths[[5]]+subsampled_netsums[i,6]*net_depths[[6]]+subsampled_netsums[i,7]*net_depths[[7]])/(sum(subsampled_netsums[i,1:7])))
+    namedotu[i] <- row.names(subsampled_netsums)[[i]]
+  }
+  data.frame(namedotu, nightmdo, stringsAsFactors = FALSE)
+}
+
+```
+
+can use the same function, just convert all taxa to presence absence so that presence in each depth isn't weighted by abundance
+
+```{r}
+scratchCOI_rarefied <- phyloseq_standardize_otu_abundance(COI_1perc_nona, method = "pa")
+
+day <- subset_samples(scratchCOI_rarefied, Diel=="day")
+night <- subset_samples(scratchCOI_rarefied, Diel=="night")
+cycle1_COI_n <- subset_samples(night, Cycle==1)
+cycle2_COI_n <- subset_samples(night, Cycle==2)
+cycle3_COI_n <- subset_samples(night, Cycle==3)
+cycle1_COI_d <- subset_samples(day, Cycle==1)
+cycle2_COI_d <- subset_samples(day, Cycle==2)
+cycle3_COI_d <- subset_samples(day, Cycle==3)
+cycle4_COI_n <- subset_samples(night, Cycle==4)
+cycle4_COI_d <- subset_samples(day, Cycle==4)
+
+depths <- c(375,325,275,225,175,125,75,25)
+nightdepthsc2 <- c(375,300,225,175,125,75,25)
+depths4 <- c(187,162,137,112,87,62,37,12)
+
+subsampled_netsums <- t(data.frame(otu_table(cycle1_COI_n)))
+net_depths <- depths
+mdo_c1n_COI <- calc_mdo(ntaxa(cycle1_COI_n)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+mdo_c1n_COI$namedotu <- taxa_names(cycle1_COI_n)
+mdo_c1n_COI$nsamples <- taxa_sums(cycle1_COI_n)
+
+subsampled_netsums <- t(data.frame(otu_table(cycle2_COI_n)))
+net_depths <- nightdepthsc2
+mdo_c2n_COI <- calc_mdo7(ntaxa(cycle2_COI_n)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+mdo_c2n_COI$namedotu <- taxa_names(cycle2_COI_n)
+mdo_c2n_COI$nsamples <- taxa_sums(cycle2_COI_n)
+
+subsampled_netsums <- t(data.frame(otu_table(cycle3_COI_n)))
+net_depths <- depths
+mdo_c3n_COI <- calc_mdo(ntaxa(cycle3_COI_n)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+mdo_c3n_COI$namedotu <- taxa_names(cycle3_COI_n)
+mdo_c3n_COI$nsamples <- taxa_sums(cycle3_COI_n)
+
+subsampled_netsums <- t(data.frame(otu_table(cycle1_COI_d)))
+net_depths <- depths
+mdo_c1d_COI <- calc_mdo(ntaxa(cycle1_COI_d)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+mdo_c1d_COI$namedotu <- taxa_names(cycle1_COI_d)
+mdo_c1d_COI$nsamples <- taxa_sums(cycle1_COI_d)
+
+subsampled_netsums <- t(data.frame(otu_table(cycle2_COI_d)))
+net_depths <- depths
+mdo_c2d_COI <- calc_mdo(ntaxa(cycle2_COI_d)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+mdo_c2d_COI$namedotu <- taxa_names(cycle2_COI_d)
+mdo_c2d_COI$nsamples <- taxa_sums(cycle2_COI_d)
+
+subsampled_netsums <- t(data.frame(otu_table(cycle3_COI_d)))
+net_depths <- depths
+mdo_c3d_COI <- calc_mdo(ntaxa(cycle3_COI_d)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+mdo_c3d_COI$namedotu <- taxa_names(cycle3_COI_d)
+mdo_c3d_COI$nsamples <- taxa_sums(cycle3_COI_d)
+
+subsampled_netsums <- t(data.frame(otu_table(cycle4_COI_n)))
+net_depths <- depths4
+mdo_c4n_COI <- calc_mdo(ntaxa(cycle4_COI_n)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+mdo_c4n_COI$namedotu <- taxa_names(cycle4_COI_n)
+mdo_c4n_COI$nsamples <- taxa_sums(cycle4_COI_n)
+
+subsampled_netsums <- t(data.frame(otu_table(cycle4_COI_d)))
+net_depths <- depths4
+mdo_c4d_COI <- calc_mdo(ntaxa(cycle4_COI_d)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+mdo_c4d_COI$namedotu <- taxa_names(cycle4_COI_d)
+mdo_c4d_COI$nsamples <- taxa_sums(cycle4_COI_d)
+
+
+
+mdo_COI <- merge(mdo_c1n_COI, mdo_c2n_COI, by = "namedotu") %>%
+  merge(mdo_c3n_COI, by = "namedotu") %>%
+  merge(mdo_c1d_COI, by = "namedotu") %>%
+  merge(mdo_c2d_COI, by = "namedotu") %>%
+  merge(mdo_c3d_COI, by = "namedotu") %>%
+  merge(mdo_c4d_COI, by = "namedotu") %>%
+  merge(mdo_c4n_COI, by = "namedotu") 
+
+colnames(mdo_COI) <- c("name", "cycle1N", "C1Nnsamples", "cycle2N","C2Nnsamples", "cycle3N","C3Nnsamples", "cycle1D", "C1Dnsamples", "cycle2D", "C2Dnsamples", "cycle3D", "C3Dnsamples", "cycle4D", "C4Dnsamples", "cycle4N", "C4Nnsamples")
+#meandepth <- rowMeans(mdo_COI[,2:7], na.rm = T)
+#mdo_COI$classification <- "epipelagic"
+#mdo_COI$classification[meandepth > 200] <- "mesopelagic"
+
+```
+
+```{r}
+calc_mdo8 <- function(n){
+  nightmdo <- numeric(n)
+  daymdo <- numeric(n)
+  namedotu <- character(n)
+  for (i in 1:n) {
+    nightmdo[i] <- ((subsampled_netsums[i,1]*net_depths[[1]]+subsampled_netsums[i,2]*net_depths[[2]]+subsampled_netsums[i,3]*net_depths[[3]]+subsampled_netsums[i,4]*net_depths[[4]]+subsampled_netsums[i,5]*net_depths[[5]]+subsampled_netsums[i,6]*net_depths[[6]]+subsampled_netsums[i,7]*net_depths[[7]]+subsampled_netsums[i,8]*net_depths[[8]])/(sum(subsampled_netsums[i,])))
+    namedotu[i] <- row.names(subsampled_netsums)[[i]]
+  }
+  data.frame(namedotu, nightmdo, stringsAsFactors = FALSE)
+}
+
+calc_mdo5 <- function(n){
+  nightmdo <- numeric(n)
+  daymdo <- numeric(n)
+  namedotu <- character(n)
+  for (i in 1:n) {
+    nightmdo[i] <- ((subsampled_netsums[i,1]*net_depths[[1]]+subsampled_netsums[i,2]*net_depths[[2]]+subsampled_netsums[i,3]*net_depths[[3]]+subsampled_netsums[i,4]*net_depths[[4]]+subsampled_netsums[i,5]*net_depths[[5]])/(sum(subsampled_netsums[i,1:5])))
+    namedotu[i] <- row.names(subsampled_netsums)[[i]]
+  }
+  data.frame(namedotu, nightmdo, stringsAsFactors = FALSE)
+}
+
+calc_mdo4 <- function(n){
+  nightmdo <- numeric(n)
+  daymdo <- numeric(n)
+  namedotu <- character(n)
+  for (i in 1:n) {
+    nightmdo[i] <- ((subsampled_netsums[i,1]*net_depths[[1]]+subsampled_netsums[i,2]*net_depths[[2]]+subsampled_netsums[i,3]*net_depths[[3]]+subsampled_netsums[i,4]*net_depths[[4]])/(sum(subsampled_netsums[i,1:4])))
+    namedotu[i] <- row.names(subsampled_netsums)[[i]]
+  }
+  data.frame(namedotu, nightmdo, stringsAsFactors = FALSE)
+}
+
+
+
+scratchCOI_rarefied <- phyloseq_standardize_otu_abundance(COI_1perc_nona, method = "pa")
+scratchCOI_rarefied <- subset_samples(scratchCOI_rarefied, depthmean < 200)
+
+day <- subset_samples(scratchCOI_rarefied, Diel=="day")
+night <- subset_samples(scratchCOI_rarefied, Diel=="night")
+cycle1_COI_n <- subset_samples(night, Cycle==1)
+cycle2_COI_n <- subset_samples(night, Cycle==2)
+cycle3_COI_n <- subset_samples(night, Cycle==3)
+cycle1_COI_d <- subset_samples(day, Cycle==1)
+cycle2_COI_d <- subset_samples(day, Cycle==2)
+cycle3_COI_d <- subset_samples(day, Cycle==3)
+cycle4_COI_n <- subset_samples(night, Cycle==4)
+cycle4_COI_d <- subset_samples(day, Cycle==4)
+
+depths <- c(175,125,75,25)
+nightdepthsc2 <- c(175,125,75,25,0)
+depths4 <- c(187,162,137,112,87,62,37,12)
+
+subsampled_netsums <- t(data.frame(otu_table(cycle1_COI_n)))
+net_depths <- depths
+mdo_c1n_COI <- calc_mdo4(ntaxa(cycle1_COI_n)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+mdo_c1n_COI$namedotu <- taxa_names(cycle1_COI_n)
+mdo_c1n_COI$nsamples <- taxa_sums(cycle1_COI_n)
+
+subsampled_netsums <- t(data.frame(otu_table(cycle2_COI_n)))
+net_depths <- nightdepthsc2
+mdo_c2n_COI <- calc_mdo4(ntaxa(cycle2_COI_n)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+mdo_c2n_COI$namedotu <- taxa_names(cycle2_COI_n)
+mdo_c2n_COI$nsamples <- taxa_sums(cycle2_COI_n)
+
+subsampled_netsums <- t(data.frame(otu_table(cycle3_COI_n)))
+net_depths <- depths
+mdo_c3n_COI <- calc_mdo4(ntaxa(cycle3_COI_n)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+mdo_c3n_COI$namedotu <- taxa_names(cycle3_COI_n)
+mdo_c3n_COI$nsamples <- taxa_sums(cycle3_COI_n)
+
+subsampled_netsums <- t(data.frame(otu_table(cycle1_COI_d)))
+net_depths <- depths
+mdo_c1d_COI <- calc_mdo4(ntaxa(cycle1_COI_d)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+mdo_c1d_COI$namedotu <- taxa_names(cycle1_COI_d)
+mdo_c1d_COI$nsamples <- taxa_sums(cycle1_COI_d)
+
+subsampled_netsums <- t(data.frame(otu_table(cycle2_COI_d)))
+net_depths <- depths
+mdo_c2d_COI <- calc_mdo4(ntaxa(cycle2_COI_d)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+mdo_c2d_COI$namedotu <- taxa_names(cycle2_COI_d)
+mdo_c2d_COI$nsamples <- taxa_sums(cycle2_COI_d)
+
+subsampled_netsums <- t(data.frame(otu_table(cycle3_COI_d)))
+net_depths <- depths
+mdo_c3d_COI <- calc_mdo4(ntaxa(cycle3_COI_d)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+mdo_c3d_COI$namedotu <- taxa_names(cycle3_COI_d)
+mdo_c3d_COI$nsamples <- taxa_sums(cycle3_COI_d)
+
+subsampled_netsums <- t(data.frame(otu_table(cycle4_COI_n)))
+net_depths <- depths4
+mdo_c4n_COI <- calc_mdo8(ntaxa(cycle4_COI_n)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+mdo_c4n_COI$namedotu <- taxa_names(cycle4_COI_n)
+mdo_c4n_COI$nsamples <- taxa_sums(cycle4_COI_n)
+
+subsampled_netsums <- t(data.frame(otu_table(cycle4_COI_d)))
+net_depths <- depths4
+mdo_c4d_COI <- calc_mdo8(ntaxa(cycle4_COI_d)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+mdo_c4d_COI$namedotu <- taxa_names(cycle4_COI_d)
+mdo_c4d_COI$nsamples <- taxa_sums(cycle4_COI_d)
+
+
+
+mdo_COI_epi <- merge(mdo_c1n_COI, mdo_c2n_COI, by = "namedotu") %>%
+  merge(mdo_c3n_COI, by = "namedotu") %>%
+  merge(mdo_c1d_COI, by = "namedotu") %>%
+  merge(mdo_c2d_COI, by = "namedotu") %>%
+  merge(mdo_c3d_COI, by = "namedotu") %>%
+  merge(mdo_c4d_COI, by = "namedotu") %>%
+  merge(mdo_c4n_COI, by = "namedotu") 
+
+colnames(mdo_COI_epi) <- c("name", "cycle1N", "C1Nnsamples", "cycle2N","C2Nnsamples", "cycle3N","C3Nnsamples", "cycle1D", "C1Dnsamples", "cycle2D", "C2Dnsamples", "cycle3D", "C3Dnsamples", "cycle4D", "C4Dnsamples", "cycle4N", "C4Nnsamples")
+#meandepth <- rowMeans(mdo_COI[,2:7], na.rm = T)
+#mdo_COI$classification <- "epipelagic"
+#mdo_COI$classification[meandepth > 200] <- "mesopelagic"
+
+
+```
+
+
+```{r calculate weighted depths}
+# scratchCOI_rarefied <- phyloseq_standardize_otu_abundance(COI_1perc_nona, method = "pa")
+# scratchCOI_rarefied <- rarefy_even_depth(COI)
+# 
+# day <- subset_samples(scratchCOI_rarefied, Diel=="day")
+# night <- subset_samples(scratchCOI_rarefied, Diel=="night")
+# cycle1_COI_n <- subset_samples(night, Cycle==1)
+# cycle2_COI_n <- subset_samples(night, Cycle==2)
+# cycle3_COI_n <- subset_samples(night, Cycle==3)
+# cycle1_COI_d <- subset_samples(day, Cycle==1)
+# cycle2_COI_d <- subset_samples(day, Cycle==2)
+# cycle3_COI_d <- subset_samples(day, Cycle==3)
+# cycle4_COI_n <- subset_samples(night, Cycle==4)
+# cycle4_COI_d <- subset_samples(day, Cycle==4)
+# 
+# depths <- c(375,325,275,225,175,125,75,25)
+# nightdepthsc3 <- c(375,300,225,175,125,75,25,0)
+# depths4 <- c(187,162,137,112,87,62,37,12)
+# 
+# subsampled_netsums <- t(data.frame(otu_table(cycle1_COI_n)))
+# net_depths <- depths
+# mdo_c1n_COI <- calc_mdo(ntaxa(cycle1_COI_n)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+# mdo_c1n_COI$namedotu <- taxa_names(cycle1_COI_n)
+# mdo_c1n_COI$nsamples <- taxa_sums(phyloseq_standardize_otu_abundance(cycle1_COI_n, method = "pa"))
+# 
+# subsampled_netsums <- t(data.frame(otu_table(cycle2_COI_n)))
+# net_depths <- depths
+# mdo_c2n_COI <- calc_mdo(ntaxa(cycle2_COI_n)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+# mdo_c2n_COI$namedotu <- taxa_names(cycle2_COI_n)
+# mdo_c2n_COI$nsamples <- taxa_sums(phyloseq_standardize_otu_abundance(cycle2_COI_n, method = "pa"))
+# 
+# subsampled_netsums <- t(data.frame(otu_table(cycle3_COI_n)))
+# net_depths <- nightdepthsc3
+# mdo_c3n_COI <- calc_mdo(ntaxa(cycle3_COI_n)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+# mdo_c3n_COI$namedotu <- taxa_names(cycle3_COI_n)
+# mdo_c3n_COI$nsamples <- taxa_sums(phyloseq_standardize_otu_abundance(cycle3_COI_n, method = "pa"))
+# 
+# subsampled_netsums <- t(data.frame(otu_table(cycle1_COI_d)))
+# net_depths <- depths
+# mdo_c1d_COI <- calc_mdo(ntaxa(cycle1_COI_d)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+# mdo_c1d_COI$namedotu <- taxa_names(cycle1_COI_d)
+# mdo_c1d_COI$nsamples <- taxa_sums(phyloseq_standardize_otu_abundance(cycle1_COI_d, method = "pa"))
+# 
+# subsampled_netsums <- t(data.frame(otu_table(cycle2_COI_d)))
+# net_depths <- depths
+# mdo_c2d_COI <- calc_mdo(ntaxa(cycle2_COI_d)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+# mdo_c2d_COI$namedotu <- taxa_names(cycle2_COI_d)
+# mdo_c2d_COI$nsamples <- taxa_sums(phyloseq_standardize_otu_abundance(cycle2_COI_d, method = "pa"))
+# 
+# subsampled_netsums <- t(data.frame(otu_table(cycle3_COI_d)))
+# net_depths <- depths
+# mdo_c3d_COI <- calc_mdo(ntaxa(cycle3_COI_d)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+# mdo_c3d_COI$namedotu <- taxa_names(cycle3_COI_d)
+# mdo_c3d_COI$nsamples <- taxa_sums(phyloseq_standardize_otu_abundance(cycle3_COI_d, method = "pa"))
+# 
+# subsampled_netsums <- t(data.frame(otu_table(cycle4_COI_n)))
+# net_depths <- depths4
+# mdo_c4n_COI <- calc_mdo(ntaxa(cycle4_COI_n)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+# mdo_c4n_COI$namedotu <- taxa_names(cycle4_COI_n)
+# mdo_c4n_COI$nsamples <- taxa_sums(phyloseq_standardize_otu_abundance(cycle4_COI_n, method = "pa"))
+# 
+# subsampled_netsums <- t(data.frame(otu_table(cycle4_COI_d)))
+# net_depths <- depths4
+# mdo_c4d_COI <- calc_mdo(ntaxa(cycle4_COI_d)) #input to calc_mdo should be the total number of OTUs - will calculate for 1:input 
+# mdo_c4d_COI$namedotu <- taxa_names(cycle4_COI_d)
+# mdo_c4d_COI$nsamples <- taxa_sums(phyloseq_standardize_otu_abundance(cycle4_COI_d, method = "pa"))
+# 
+# 
+# 
+# mdo_COI <- merge(mdo_c1n_COI, mdo_c2n_COI, by = "namedotu") %>%
+#   merge(mdo_c3n_COI, by = "namedotu") %>%
+#   merge(mdo_c1d_COI, by = "namedotu") %>%
+#   merge(mdo_c2d_COI, by = "namedotu") %>%
+#   merge(mdo_c3d_COI, by = "namedotu") %>%
+#   merge(mdo_c4d_COI, by = "namedotu") %>%
+#   merge(mdo_c4n_COI, by = "namedotu") 
+# 
+# colnames(mdo_COI) <- c("name", "cycle1N", "C1Nnsamples", "cycle2N","C2Nnsamples", "cycle3N","C3Nnsamples", "cycle1D", "C1Dnsamples", "cycle2D", "C2Dnsamples", "cycle3D", "C3Dnsamples", "cycle4D", "C4Dnsamples", "cycle4N", "C4Nnsamples")
+# #meandepth <- rowMeans(mdo_COI[,2:7], na.rm = T)
+# #mdo_COI$classification <- "epipelagic"
+# #mdo_COI$classification[meandepth > 200] <- "mesopelagic"
+
+
+
+```
+
+
+```{r}
+save(mdo_COI_epi, mdo_COI, COI_1perc_nona, scratchCOI_rarefied, COI, file = "COIdataforASM.rdat")
+
+
+```
+
+
+###6/18
+### Cross-shore shifts in DVM
+
+```{r}
+
+
+#calculate mean depth for def as meso/epi
+#day first, overwrite with night if there is night data (since we think of mesopelagic taxa as rising to the surface and epi taxa as remaining in the surface)
+daymean <- rowMeans(mdo_COI[,5:8], na.rm = T)
+nightmean <- rowMeans(mdo_COI[,c(2:4,9)], na.rm = T)
+
+
+
+#deeper than 200m is mesopelagic, shallower is epipelagic
+mdo_COI$classification <- "epipelagic"
+mdo_COI$classification[daymean > 200] <- "mesopelagic"
+mdo_COI$classification[daymean <= 200] <- "epipelagic"
+mdo_COI$classification[nightmean > 200] <- "mesopelagic"
+mdo_COI$classification[nightmean <= 200] <- "epipelagic"
+
+#day - night gives a positive value for dvm, a negative value for reverse dvm (if day depth is larger/deeper than night, night - day will be positive)
+mdo_COI$c1dvm <- mdo_COI$cycle1D - mdo_COI$cycle1N
+mdo_COI$c2dvm <- mdo_COI$cycle2D - mdo_COI$cycle2N
+mdo_COI$c3dvm <- mdo_COI$cycle3D - mdo_COI$cycle3N
+mdo_COI$c4dvm <- mdo_COI$cycle4D - mdo_COI$cycle4N
+
+
+
+taxtraittable <- data.frame(tax_table(COI))
+taxtraittable$hash <- rownames(taxtraittable)
+mdo_COIwithtraits <- merge(mdo_COI, taxtraittable, by.x = "name", by.y = "hash")
+
+```
+
+```{r}
+save(mdo_COI_epi, mdo_COI, mdo_COIwithtraits, COI_1perc_nona, scratchCOI_rarefied, COI, file = "COIdataforASM.rdat")
+
+
+```
+
+```{r}
+# 
+# d <- mdo_COI[,c(10:14)] %>% tidyr::pivot_longer(names_to = "cycle", values_to = "dvm", cols = c("c1dvm", "c2dvm", "c3dvm", "c4dvm"))
+# dmean <- summarise(group_by(d,cycle, classification), mean = mean(dvm, na.rm = T), sd = sd(dvm, na.rm = T))
+# dmean$cyclen <- strsplit(dmean$cycle, split = "") %>% sapply(extract2, 2)
+# #dmean$time <- strsplit(dmean$cycle, split = "") %>% sapply(extract2, 2)
+# 
+# pdf("plots/DVM_mag_by_cycle_COI.pdf")
+# ggplot(d, aes(x = dvm)) +
+#   geom_histogram(aes(color = classification), fill = "white",
+#                 position = "identity", bins = 25, alpha = 0.4) +
+#   scale_color_manual(values = c("#00AFBB", "#E7B800")) +
+#   ggtitle("Magnitude of DVM by cycle") + theme_bw() + 
+#   geom_vline(data = dmean, aes(xintercept = mean, color = classification)) +
+#  # geom_vline(aes(xintercept = d$m[d$classification == "mesopelagic"]), colour="#E7B800", size = 1) +
+#   facet_wrap(.~cycle, nrow = 4) + 
+#   xlab("Magnitude of DVM") + 
+#   ylab("OTU Count")
+# dev.off()
+# 
+# pdf("plots/meanDVMmagnitudebycycle_COI.pdf")
+# ggplot(dmean, aes(x = cyclen, y = mean, group = classification)) +
+#   geom_line(aes(color = classification)) +
+#   scale_color_manual(values = c("#00AFBB", "#E7B800")) +
+#   ggtitle("Cross-shore changes in mean DVM magnitude") + theme_bw() +
+#   geom_errorbar(data = dmean, aes(ymin = mean-sd, ymax = mean+sd, color = classification),
+#                  position=position_dodge(0.05)) + 
+#   xlab("Cycle") + 
+#   ylab("Mean DVM Magnitude")
+# dev.off()
+# 
+# pdf("plots/meanDVMmagnitudebycycle_COI_dotandbox.pdf")
+# ggplot(d, aes(x = cycle, y = dvm, group = classification)) +
+#   geom_boxplot(aes(color = classification, group = paste(classification, cycle)), outlier.shape = NA) +
+#   geom_point(position = position_jitterdodge(), aes(color=classification, group = paste(classification, cycle)), width = 0.25, alpha = 0.15)+
+#   scale_color_manual(values = c("#00AFBB", "#E7B800")) +
+#   ggtitle("Cross-shore changes in DVM") + theme_bw() +
+#   xlab("Cycle") + 
+#   ylab("DVM Magnitude") + 
+#   scale_color_discrete(name = "Classification",
+#                           labels = c("Epipelagic", "Mesopelagic")) + 
+#   scale_x_discrete(labels=c("c1dvm" = "Cycle 1", "c2dvm" = "Cycle 2",
+#                               "c3dvm" = "Cycle 3", "c4dvm" = "Cycle 4"))
+#   
+# dev.off()
+
+```
+
+cycle 2 seems potentially bimodal
+
+(a negative value for dvm, a positive value for reverse dvm)
+
+if dvm is based on mean depth of occurrence, then epipelagic taxa have stronger dvm than mesopelagic, and cycle 3 has stronger dvm than 2, stronger than 1. ?? 
+
+
+### Cross-shore shifts in MDO 
+
+```{r}
+head(mdo_COI)
+mdo_long <- mdo_COI[,c(2:10)] %>% tidyr::pivot_longer(names_to = "cycle", values_to = "mdo", cols = c("cycle1N", "cycle2N", "cycle3N", "cycle1D", "cycle2D", "cycle3D", "cycle4D", "cycle4N"))
+mdo_long$cyclen <- strsplit(mdo_long$cycle, split = "") %>% sapply(extract2, 6)
+mdo_long$time <- strsplit(mdo_long$cycle, split = "") %>% sapply(extract2, 7)
+mdo_long$time[mdo_long$time == "N"] <- "Night"
+mdo_long$time[mdo_long$time == "D"] <- "Day"
+dmean <- summarise(group_by(mdo_long, cyclen, classification, time), mean = mean(mdo, na.rm = T), sd = sd(mdo, na.rm = T))
+
+pdf("plots/meandepthocc_depth_time_COI.pdf")
+ggplot(mdo_long, aes(x = mdo)) +
+  geom_histogram(aes(color = classification), fill = "white",
+                position = "identity", bins = 25, alpha = 0.4) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800")) +
+  ggtitle("Depth of Occurence by depth zone and time")+xlim(0,400) + theme_bw() + 
+  geom_vline(data = dmean, aes(xintercept = mean, color = classification)) +
+  facet_grid(cyclen~time) + 
+  xlab("Mean Depth of Occurence") + 
+  ylab("OTU Count")
+dev.off()
+
+pdf("plots/mean_changes_inMDO_COI.pdf")
+ggplot(dmean, aes(x = cyclen, y = mean, group = interaction(classification, time))) +
+  geom_line(aes(color = classification, linetype = time)) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800")) +
+  ggtitle("Cross-shore changes in mean depth of occurence") + theme_bw() +
+  geom_errorbar(data = dmean, aes(ymin = mean-sd, ymax = mean+sd, color = classification, linetype = time),
+                 position=position_dodge(0.05)) + 
+  xlab("Cycle") + 
+  ylab("Mean Depth of Occurence") + scale_y_reverse()
+dev.off()
+
+
+#test for significance of differences between groups
+mdo_long_plot <- mdo_long
+mdo_long_plot$keep <- "T"
+mdo_long_plot$keep[mdo_long_plot$cyclen == 4 & mdo_long_plot$classification == "mesopelagic"] <- "F"
+mdo_long_plot <- mdo_long_plot[mdo_long_plot$keep == "T",]
+
+
+fit <- aov(mdo ~ cyclen, data=mdo_long_plot[mdo_long_plot$classification == "mesopelagic" & mdo_long_plot$time == "D",])
+summary(fit)
+TukeyHSD(fit)
+fit <- aov(mdo ~ cyclen, data=mdo_long_plot[mdo_long_plot$classification == "mesopelagic" & mdo_long_plot$time == "N",])
+summary(fit)
+TukeyHSD(fit)
+fit <- aov(mdo ~ cyclen, data=mdo_long_plot[mdo_long_plot$classification == "epipelagic" & mdo_long_plot$time == "D",])
+summary(fit)
+TukeyHSD(fit)
+fit <- aov(mdo ~ cyclen, data=mdo_long_plot[mdo_long_plot$classification == "epipelagic" & mdo_long_plot$time == "N",])
+summary(fit)
+TukeyHSD(fit)
+
+
+pdf("plots/changes_in_MDO_COI_boxdot.pdf")
+ggplot(mdo_long_plot, aes(x = cyclen, y = mdo, group = classification)) +
+  geom_boxplot(aes(color = classification, group = paste(classification, cycle)), outlier.shape = NA, position = position_dodge2(preserve = "single")) +
+  geom_point(position = position_jitterdodge(), aes(color=classification, group = paste(classification, cycle)), width = 0.15, alpha = 0.15)+
+  ggtitle("Cross-shore changes in depth") + theme_bw() +
+  xlab("Cycle") + 
+  ylab("Mean Depth of Occurence") + 
+  scale_color_manual(values = c("#00AFBB", "#E7B800"), name = "Classification",
+                          labels = c("Epipelagic", "Mesopelagic")) + 
+  scale_x_discrete(labels=c("c1dvm" = "Cycle 1", "c2dvm" = "Cycle 2",
+                              "c3dvm" = "Cycle 3", "c4dvm" = "Cycle 4")) + 
+  facet_wrap(.~time, nrow = 2) +
+  scale_y_reverse() + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+  dev.off()
+  
+  
+  
+
+  
+ 
+#ggplot(mdo_long, aes(x = mdo)) +
+#  geom_histogram(aes(color = time), fill = "white",
+#                position = "identity", bins = 25, alpha = 0.4) +
+#  scale_color_manual(values = c("#00AFBB", "#E7B800")) +
+#  ggtitle("Depth of Occurence by depth zone and time")+xlim(0,400) + theme_bw() + 
+#  geom_vline(data = dmean, aes(xintercept = mean, color = time)) +
+#t  facet_grid(classification~cyclen)
+
+```
+
+
+now can we divide this by taxon? 
+
+```{r}
+taxonomicinfo <- data.frame(tax_table(COI_1perc_nona))
+mdo_COI$taxon <- taxonomicinfo[,4] #midori phylum
+#mdo_COI$taxon[tax_table(COI_1perc_nona)[,12] == "Arthropoda"] <- taxonomicinfo[tax_table(COI_1perc_nona)[,12] == "Arthropoda",14] #add midori order for arthropods
+#mdo_COI$taxon[mdo_COI$taxon == ""] <- taxonomicinfo[mdo_COI$taxon == "",3] #add ncbi order for OTUs without a midori order
+#mdo_COI$taxon <- taxonomicinfo[,2] #add greater definition for molluscs
+
+##filter this just to taxa with >10 OTUs
+tax10 <- names(table(mdo_COI$taxon)[table(mdo_COI$taxon) > 10])
+mdo_COI_ab <- mdo_COI[mdo_COI$taxon %in% tax10, ]
+mdo_COI_ab <- mdo_COI_ab[mdo_COI_ab$taxon != "Arachnida", ]
+mdo_COI_ab <- mdo_COI_ab[mdo_COI_ab$taxon != "Insecta", ]
+
+```
+
+ 
+```{r dvm divided into taxon}
+
+ 
+d <- mdo_COI_ab[,c(10:15)] %>% tidyr::pivot_longer(names_to = "cycle", values_to = "dvm", cols = c("c1dvm", "c2dvm", "c3dvm", "c4dvm"))
+dmean <- summarise(group_by(d,cycle, classification, taxon), mean = mean(dvm, na.rm = T), sd = sd(dvm, na.rm = T))
+dmean$cyclen <- strsplit(dmean$cycle, split = "") %>% sapply(extract2, 2)
+
+mdo_long <- mdo_COI_ab[,c(2:10,15)] %>% tidyr::pivot_longer(names_to = "cycle", values_to = "mdo", cols = c("cycle1N", "cycle2N", "cycle3N", "cycle1D", "cycle2D", "cycle3D", "cycle4D", "cycle4N"))
+mdo_long$cyclen <- strsplit(mdo_long$cycle, split = "") %>% sapply(extract2, 6)
+mdo_long$time <- strsplit(mdo_long$cycle, split = "") %>% sapply(extract2, 7)
+
+
+ pdf("plots/DVM_mag_by_cycle_taxon_COI.pdf")
+ggplot(d, aes(x = dvm)) +
+  geom_histogram(aes(color = classification), fill = "white",
+                position = "identity", bins = 25, alpha = 0.4) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800")) +
+  ggtitle("Magnitude of DVM by cycle") + theme_bw() + 
+  geom_vline(data = dmean, aes(xintercept = mean, color = classification)) +
+ # geom_vline(aes(xintercept = d$m[d$classification == "mesopelagic"]), colour="#E7B800", size = 1) +
+  facet_grid(taxon~cycle) + 
+  xlab("Magnitude of DVM") + 
+  ylab("OTU Count") +
+  theme(strip.text.y.right = element_text(angle = 0), panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+dev.off()
+
+pdf("plots/meanDVMmagnitudebycycle_withtaxon_COI.pdf")
+ggplot(dmean, aes(x = cyclen, y = mean, group = classification)) +
+  geom_line(aes(color = classification)) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800")) +
+  ggtitle("Cross-shore changes in mean DVM magnitude") + theme_bw() +
+  geom_errorbar(data = dmean, aes(ymin = mean-sd, ymax = mean+sd, color = classification),
+                 position=position_dodge(0.05)) + 
+  xlab("Cycle") + 
+  ylab("Mean DVM Magnitude") + facet_wrap(.~taxon)
+dev.off()
+
+pdf("plots/changes_in_MDO_COI_boxdot_taxon.pdf")
+ggplot(mdo_long, aes(x = cyclen, y = mdo, group = classification)) +
+  geom_boxplot(aes(color = classification, group = paste(classification, cyclen)), outlier.shape = NA) +
+  geom_point(position = position_jitterdodge(), aes(color=classification, group = paste(classification, cyclen)), width = 0.15, alpha = 0.3)+
+  ggtitle("Cross-shore changes in MDO") + theme_bw() +
+  xlab("Cycle") + 
+  ylab("Mean Depth of Occurence") + 
+  scale_color_manual(values = c("red", "blue", "darkgreen", "orange"), name = "Classification", #values = c("#00AFBB", "#E7B800"),
+                          labels = c("Epipelagic", "Mesopelagic")) + 
+  scale_x_discrete(labels=c("c1dvm" = "Cycle 1", "c2dvm" = "Cycle 2",
+                              "c3dvm" = "Cycle 3", "c4dvm" = "Cycle 4")) + 
+  facet_grid(taxon~time) +
+  scale_y_reverse()
+  dev.off()
+
+  
+mdo_long_plot <- mdo_long
+mdo_long_plot$keep <- "T"
+mdo_long_plot$keep[mdo_long_plot$cyclen == 4 & mdo_long_plot$classification == "mesopelagic"] <- "F"
+mdo_long_plot <- mdo_long_plot[mdo_long_plot$keep == "T",]
+mdo_long_plot$time[mdo_long_plot$time == "N"] <- "Night"
+mdo_long_plot$time[mdo_long_plot$time == "D"] <- "Day"
+  
+  pdf("plots/changes_in_MDO_COI_boxdot_taxon_woc4m.pdf")
+ggplot() +
+  geom_boxplot(data = mdo_long_plot[mdo_long_plot$taxon == "Anthozoa" | mdo_long_plot$taxon == "Gastropoda" | mdo_long_plot$taxon == "Hexanauplia" | mdo_long_plot$taxon == "Hydrozoa" | mdo_long_plot$taxon == "Malacostraca"| mdo_long_plot$taxon == "Polychaeta" | mdo_long_plot$taxon == "Sagittoidea",], aes(x = cyclen, y = mdo, color = classification, group = paste(classification, cyclen)), outlier.shape = NA, position = position_dodge2(preserve = "single")) +
+  geom_point(data = mdo_long_plot[mdo_long_plot$taxon == "Anthozoa" | mdo_long_plot$taxon == "Gastropoda" | mdo_long_plot$taxon == "Hexanauplia" | mdo_long_plot$taxon == "Hydrozoa" | mdo_long_plot$taxon == "Malacostraca"| mdo_long_plot$taxon == "Polychaeta" | mdo_long_plot$taxon == "Sagittoidea",], aes(x = cyclen, y = mdo, color=classification, group = paste(classification, cyclen)), position = position_jitterdodge(), width = 0.15, alpha = 0.15)+
+  ggtitle("Cross-shore changes in depth") + theme_bw() +
+  xlab("Cycle") + 
+  ylab("Mean Depth of Occurence") + 
+  scale_color_manual(values = c("#00AFBB", "#E7B800"), name = "Classification", 
+                          labels = c("Epipelagic", "Mesopelagic")) + 
+  scale_x_discrete(labels=c("c1dvm" = "Cycle 1", "c2dvm" = "Cycle 2",
+                              "c3dvm" = "Cycle 3", "c4dvm" = "Cycle 4")) + 
+  scale_y_reverse() +
+  facet_grid(taxon~time)
+  dev.off()
+```
+
+```{r}
+taxon <- "Halocyprida"
+
+fit <- aov(mdo ~ cyclen, data=mdo_long_plot[mdo_long_plot$classification == "mesopelagic" & mdo_long_plot$time == "D" & taxon == taxon,])
+summary(fit)
+#TukeyHSD(fit)
+fit <- aov(mdo ~ cyclen, data=mdo_long_plot[mdo_long_plot$classification == "mesopelagic" & mdo_long_plot$time == "N" & mdo_long_plot$taxon == taxon,])
+summary(fit)
+#TukeyHSD(fit)
+fit <- aov(mdo ~ cyclen, data=mdo_long_plot[mdo_long_plot$classification == "epipelagic" & mdo_long_plot$time == "D" & mdo_long_plot$taxon == taxon,])
+summary(fit)
+#TukeyHSD(fit)
+fit <- aov(mdo ~ cyclen, data=mdo_long_plot[mdo_long_plot$classification == "epipelagic" & mdo_long_plot$time == "N" & mdo_long_plot$taxon == taxon,])
+summary(fit)
+#TukeyHSD(fit)
+
+
+
+
+```
+
+
+
+```{r}
+#does mean depth of occurence vary between 
+
+mdo_foranova <- mdo_longCOIdataforASM.rdat
+#mdo_foranova <- mdo_foranova[mdo_foranova$taxon == "Calanoida" | mdo_foranova$taxon == "Euphausiacea" | mdo_foranova$taxon == "Cnidaria" | mdo_foranova$taxon == "Halocyprida" | mdo_foranova$taxon == "Polychaeta",]
+mdo_foranova$chlorophyllmax <- NA
+mdo_foranova$chlorophyllmax[mdo_foranova$cyclen == 1] <- enviro_data$chlmax[enviro_data$cyclen == 1]
+mdo_foranova$chlorophyllmax[mdo_foranova$cyclen == 2] <- enviro_data$chlmax[enviro_data$cyclen == 2]
+mdo_foranova$chlorophyllmax[mdo_foranova$cyclen == 3] <- enviro_data$chlmax[enviro_data$cyclen == 3]
+mdo_foranova$chlorophyllmax[mdo_foranova$cyclen == 4] <- enviro_data$chlmax[enviro_data$cyclen == 4]
+mdo_foranova$oneperclight <- NA
+mdo_foranova$oneperclight[mdo_foranova$cyclen == 1] <- enviro_data$oneperclight[enviro_data$cyclen == 1]
+mdo_foranova$oneperclight[mdo_foranova$cyclen == 2] <- enviro_data$oneperclight[enviro_data$cyclen == 2]
+mdo_foranova$oneperclight[mdo_foranova$cyclen == 3] <- enviro_data$oneperclight[enviro_data$cyclen == 3]
+mdo_foranova$oneperclight[mdo_foranova$cyclen == 4] <- enviro_data$oneperclight[enviro_data$cyclen == 4]
+mdo_foranova$beamC100m <- NA
+mdo_foranova$beamC100m[mdo_foranova$cyclen == 1] <- enviro_data$beamC100m[enviro_data$cyclen == 1]
+mdo_foranova$beamC100m[mdo_foranova$cyclen == 2] <- enviro_data$beamC100m[enviro_data$cyclen == 2]
+mdo_foranova$beamC100m[mdo_foranova$cyclen == 3] <- enviro_data$beamC100m[enviro_data$cyclen == 3]
+mdo_foranova$beamC100m[mdo_foranova$cyclen == 4] <- enviro_data$beamC100m[enviro_data$cyclen == 4]
+
+
+fit <- lm(mdo ~ chlorophyllmax*oneperclight, data=mdo_foranova)
+plot(fit)
+summary(fit)
+fit <- lm(mdo ~ chlorophyllmax*classification*oneperclight, data=mdo_foranova)
+plot(fit)
+summary(fit)
+fit <- lm(mdo ~ chlorophyllmax*oneperclight*beamC100m*classification*time, data=mdo_foranova)
+plot(fit)
+summary(fit)
+
+fit <- lm(mdo ~ chlorophyllmax*oneperclight*beamC100m, data=mdo_foranova[mdo_foranova$classification == "mesopelagic" & mdo_foranova$time == "D",])
+plot(fit)
+summary(fit)
+fit <- lm(mdo ~ chlorophyllmax*oneperclight*beamC100m, data=mdo_foranova[mdo_foranova$classification == "mesopelagic" & mdo_foranova$time == "N",])
+plot(fit)
+summary(fit)
+fit <- lm(mdo ~ chlorophyllmax*oneperclight*beamC100m, data=mdo_foranova[mdo_foranova$classification == "epipelagic" & mdo_foranova$time == "D",])
+plot(fit)
+summary(fit)
+fit <- lm(mdo ~ chlorophyllmax*oneperclight*beamC100m, data=mdo_foranova[mdo_foranova$classification == "epipelagic" & mdo_foranova$time == "N",])
+plot(fit)
+summary(fit)
+
+
+```
+
+```{r}
+#mdo_foranova <- mdo_long
+ggplotRegression <- function (fit) {
+
+require(ggplot2)
+
+ggplot(fit$model, aes_string(x = names(fit$model)[2], y = names(fit$model)[1])) + 
+  geom_point() +
+  stat_smooth(method = "lm", col = "red") +
+  labs(title = paste("Adj R2 = ",signif(summary(fit)$adj.r.squared, 5),
+                     "Intercept =",signif(fit$coef[[1]],5 ),
+                     " Slope =",signif(fit$coef[[2]], 5),
+                     " P =",signif(summary(fit)$coef[2,4], 5))) +
+  theme_bw()+ scale_y_reverse()
+}
+
+mdo_foranova$keep <- "T"
+mdo_foranova$keep[mdo_foranova$cyclen == "4" & mdo_foranova$classification == "mesopelagic"] <- "F"
+mdo_foranova <- mdo_foranova[mdo_foranova$keep == "T",]
+
+epiD <- lm(mdo ~ chlorophyllmax, data=mdo_foranova[mdo_foranova$classification == "epipelagic" & mdo_foranova$time == "D",])
+summary(epiD)
+epiD <- ggplotRegression(epiD)
+
+epiN <- lm(mdo ~ chlorophyllmax, data=mdo_foranova[mdo_foranova$classification == "epipelagic" & mdo_foranova$time == "N",])
+summary(epiN)
+epiN <- ggplotRegression(epiN)
+
+mesoD <- lm(mdo ~ oneperclight, data=mdo_foranova[mdo_foranova$classification == "mesopelagic" & mdo_foranova$time == "D",])
+summary(mesoD)
+mesoD <- ggplotRegression(mesoD)
+
+mesoN <- lm(mdo ~ oneperclight, data=mdo_foranova[mdo_foranova$classification == "mesopelagic" & mdo_foranova$time == "N",])
+summary(mesoN)
+mesoN <- ggplotRegression(mesoN)
+
+epiD + ggtitle("Epipelagic Daytime Distributions") + xlab("Depth of Chlorophyll Max (m)") + ylab("Mean Depth of Occurence") 
+epiN + ggtitle("Epipelagic Nighttime Distributions") + xlab("Depth of Chlorophyll Max (m)") + ylab("Mean Depth of Occurence")
+mesoD + ggtitle("Mesopelagic Daytime Distributions") + xlab("0.1% Light Depth") + ylab("Mean Depth of Occurence")
+mesoN + ggtitle("Mesopelagic Night Distributions") + xlab("0.1% Light Depth") + ylab("Mean Depth of Occurence")
+
+pdf("plots/lm_forbestpredictor.pdf")
+ggarrange(epiD + ggtitle("Epipelagic Daytime") + xlab("Depth of Chlorophyll Max (m)") + ylab("Mean Depth of Occurence"), epiN + ggtitle("Epipelagic Nighttime") + xlab("Depth of Chlorophyll Max (m)") + ylab("Mean Depth of Occurence"), mesoD + ggtitle("Mesopelagic Daytime") + xlab("0.1% Light Depth") + ylab("Mean Depth of Occurence"))
+dev.off()
+```
+
+```{r}
+mdo_long <- mdo_COI_ab[,c(2:8,12)] %>% tidyr::pivot_longer(names_to = "cycle", values_to = "mdo", cols = c("cycle1N", "cycle2N", "cycle3N", "cycle1D", "cycle2D", "cycle3D"))
+mdo_long$cyclen <- strsplit(mdo_long$cycle, split = "") %>% sapply(extract2, 6)
+mdo_long$time <- strsplit(mdo_long$cycle, split = "") %>% sapply(extract2, 7)
+
+dmean <- summarise(group_by(mdo_long, cyclen, classification, time, taxon), mean = mean(mdo, na.rm = T), sd = sd(mdo, na.rm = T))
+
+pdf("plots/meanMDObytaxon.pdf")
+ggplot(dmean, aes(x = cyclen, y = mean, group = interaction(classification, time))) +
+  geom_line(aes(color = classification, linetype = time)) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800")) +
+  ggtitle("Cross-shore changes in mean depth of occurence") + theme_bw() +
+  geom_errorbar(data = dmean, aes(ymin = mean-sd, ymax = mean+sd, color = classification, linetype = time),
+                 position=position_dodge(0.05)) + 
+  xlab("Cycle") + 
+  ylab("Mean Depth of Occurence") + facet_wrap(.~taxon) + scale_y_reverse()
+ dev.off()
+ 
+```
+
+THis gives us means, but what about actual patterns in individual OTUs?
+
+
+#define patterns
+```{r}
+#need to figure out how to deal with NAs 
+#NAs occur where the taxon isn't present within a cycle
+#so even if it's missing from one cycle, this 
+
+#compare each individually and save difference
+mdo_COI_ab$n1n2 <- mdo_COI_ab$cycle1N - mdo_COI_ab$cycle2N #night 1 - night 2
+mdo_COI_ab$n2n3 <- mdo_COI_ab$cycle2N - mdo_COI_ab$cycle3N #night 2 - night 3
+mdo_COI_ab$n1n3 <- mdo_COI_ab$cycle1N - mdo_COI_ab$cycle3N #night 1 - night 3
+mdo_COI_ab$d1d2 <- mdo_COI_ab$cycle1D - mdo_COI_ab$cycle2D #day 1 - day 2
+mdo_COI_ab$d2d3 <- mdo_COI_ab$cycle2D - mdo_COI_ab$cycle3D #day 2 - day 3
+mdo_COI_ab$d1d3 <- mdo_COI_ab$cycle1D - mdo_COI_ab$cycle3D #day 1 - day 3
+
+#if either is zero, we assign no change, which will be overwritten if another one is changing
+mdo_COI_ab$nightpattern[(mdo_COI_ab$n1n2 == 0) | (mdo_COI_ab$n2n3 == 0) | (mdo_COI_ab$n1n3 == 0)] <- "No Change (night)"
+#if n1n2 and n2n3 and n1n3 are positive, or one is positive and one na, it's getting deeper offshore
+mdo_COI_ab$nightpattern[(mdo_COI_ab$n1n2 > 0) | (mdo_COI_ab$n2n3 > 0) | (mdo_COI_ab$n1n3 > 0)] <- "Deeper Offshore (night)"
+#if n1n2 and n2n3 and n1n3 are  negative, or one is negative and one na, it's getting shallower offshore
+mdo_COI_ab$nightpattern[(mdo_COI_ab$n1n2 < 0) | (mdo_COI_ab$n2n3 < 0) | (mdo_COI_ab$n1n3 < 0)] <- "Shallower Offshore (night)"
+#if n1n2 and n2n3 are opposite signs, it's either n or u shaped
+mdo_COI_ab$nightpattern[((mdo_COI_ab$n1n2 > 0) & (mdo_COI_ab$n2n3 < 0)) ] <- "n-shaped (night)"
+mdo_COI_ab$nightpattern[((mdo_COI_ab$n1n2 < 0) & (mdo_COI_ab$n2n3 > 0))] <- "u-shaped (night)"
+
+#again for day
+mdo_COI_ab$daypattern[(mdo_COI_ab$d1d2 == 0) | (mdo_COI_ab$d2d3 == 0) | (mdo_COI_ab$d1d3 == 0)] <- "No Change (Day)"
+mdo_COI_ab$daypattern[(mdo_COI_ab$d1d2 > 0) | (mdo_COI_ab$d2d3 > 0) | (mdo_COI_ab$d1d3 > 0)] <- "Deeper Offshore (Day)"
+mdo_COI_ab$daypattern[(mdo_COI_ab$d1d2 < 0) | (mdo_COI_ab$d2d3 < 0) | (mdo_COI_ab$d1d3 < 0)] <- "Shallower Offshore (Day)"
+mdo_COI_ab$daypattern[((mdo_COI_ab$d1d2 > 0) & (mdo_COI_ab$d2d3 < 0)) ] <- "n-shaped (Day)"
+mdo_COI_ab$daypattern[((mdo_COI_ab$d1d2 < 0) & (mdo_COI_ab$d2d3 > 0))] <- "u-shaped (Day)"
+
+```
+
+
+Okay so we've defined patterns for each taxon (where possible)
+# how to summarize by taxonomic assignment? a table? 
+
+```{r}
+mdo_long <- mdo_COI_ab[,c(1,8,12,19,20)] %>% tidyr::pivot_longer(names_to = "diel", values_to = "pattern", cols = c("nightpattern", "daypattern"))
+
+pdf("plots/patterns_by_taxon_night.pdf")
+mdo_long[mdo_long$diel == "nightpattern",] %>% 
+  group_by(taxon, diel, pattern) %>%
+  filter(!all(is.na(pattern))) %>%
+  summarise(Count = n()) %>%
+  ggplot(aes(x = Count, y = pattern)) +
+  geom_bar(stat = "identity") +
+  theme_bw() + theme(axis.text.x=element_text(angle = -90, hjust = 0)) + 
+  facet_wrap(.~taxon) 
+dev.off()
+
+pdf("plots/patterns_by_taxon_day.pdf")
+mdo_long[mdo_long$diel == "daypattern", ] %>% 
+  group_by(taxon, diel, pattern) %>%
+  filter(!all(is.na(pattern))) %>%
+  summarise(Count = n()) %>%
+  ggplot(aes(x = Count, y = pattern)) +
+  geom_bar(stat = "identity") +
+  theme_bw() + theme(axis.text.x=element_text(angle = -90, hjust = 0)) + 
+  facet_wrap(.~taxon) 
+dev.off()
+
+```
+
+
+

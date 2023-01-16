@@ -1,0 +1,377 @@
+---
+title: "Explore the copepods and community"
+output: html_document
+date: "2022-10-15"
+---
+
+```{r load data}
+load("COIdataforASM.rdat")
+load("ZHANdataforASM.rdat")
+load("tables_bothmarkers_absentspeciesremoved_COIstopcodonsremoved_traitsadded_withDVM.Rdat")
+```
+
+
+
+# community analyses
+How does overall diversity change among cycles? what about within groups? 
+How does the relative composition of the community among major phyla compare? 
+What does the 
+```{r}
+plot_richness(COI, measures=c("Observed"), x = "depthmean") + 
+  facet_wrap(.~Cycle, nrow = 1, scales = "free_x") + 
+  coord_flip() + 
+  scale_x_reverse()
+
+sample_data(COI)$richness <- estimate_richness(COI, split = TRUE, measures = "Observed")$Observed
+sample_data(ZHAN)$richness <- estimate_richness(ZHAN, split = TRUE, measures = "Observed")$Observed
+
+plot_richness_steph <- function (physeq, x = "Sample", y = "Richness", 
+  title = NULL, facet_grid = NULL, w = "binwidth") {
+  mdf = psmelt(physeq)
+  disp1 <- max(mdf$richness)*1.05
+  mdf$richness[mdf$Diel == "night"] <- mdf$richness[mdf$Diel == "night"]*-1
+  mdf$groupings <- paste(mdf$Diel, mdf$Cycle)
+  p <- ggplot(mdf) + 
+    annotate("rect", xmin = -Inf,
+                  xmax = Inf,
+                  ymin =  -Inf,
+                  ymax = 0, fill = "grey60", alpha = 0.5) + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4), limits = c(-disp1, disp1), labels=abs) +
+  geom_point(aes(x = depthmean, y = richness, group = groupings, color = Cycle)) + 
+  geom_line(aes(x = depthmean, y = richness, group = groupings, color = Cycle)) + 
+    theme_bw() + 
+    coord_flip() + 
+    scale_x_reverse() +
+    labs(x = "Depth (m)", y = "OTU Richness") +
+  geom_hline(yintercept = 0, size = 0.2) 
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(facet_grid)
+  }
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+
+prichnesscoi <- plot_richness_steph(COI, x = "depthmean") + 
+  viridis::scale_color_viridis(discrete = TRUE) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+
+
+prichness18S <- plot_richness_steph(ZHAN, x = "depthmean") + 
+  viridis::scale_color_viridis(discrete = TRUE)+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+
+#plot_richness_steph(COI, x = "depthmean") + 
+#  facet_wrap(.~Cycle, ncol = 4) + 
+#  theme(strip.text = element_blank()) +  
+#  theme(plot.title = element_text(size=7), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+#
+#plot_richness_steph(ZHAN, x = "depthmean") + 
+#  facet_wrap(.~Cycle, ncol = 4) + 
+#  theme(strip.text = element_blank()) +  
+#  theme(plot.title = element_text(size=7), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+
+
+
+```
+
+```{r}
+plot_bar_width_double_all_classes <- function (physeq, x = "Sample", y = "Abundance", 
+  title = NULL, facet_grid = NULL, w = "binwidth") {
+  mdf = psmelt(physeq)
+  disp1 <- max(mdf$Abundance)*1.05
+  mdf$Abundance[mdf$Diel == "night"] <- mdf$Abundance[mdf$Diel == "night"]*-1
+  p <- ggplot(mdf, aes(width = binwidth*.9)) + 
+    annotate("rect", xmin = -Inf,
+                  xmax = Inf,
+                  ymin =  -Inf,
+                  ymax = 0, fill = "grey60", alpha = 0.5) + 
+        geom_bar(aes(x = depthmean, y = Abundance, fill = Class), stat = "identity") + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4), limits = c(-disp1, disp1), labels=abs) +
+    theme_bw() + 
+    scale_fill_manual(values = c('#e6194B', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', '#469990', '#dcbeff', '#9A6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#a9a9a9', '#ffffff', '#000000')) +
+    coord_flip() + 
+    scale_x_reverse() +
+    labs(x = "Depth (m)", y = "Relative Abundance") +
+  geom_hline(yintercept = 0, size = 0.2) 
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(facet_grid)
+  }
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+
+ZHAN_relab <- transform_sample_counts(ZHAN, function(x) x / sum(x) )
+tax_table(ZHAN_relab)[,6][tax_table(ZHAN_relab)[,6]=="Class"] <- "Unidentified"
+tax_table(ZHAN_relab)[,6][tax_table(ZHAN_relab)[,6]==""] <- "Unidentified"
+tax_table(ZHAN_relab)[,6][is.na(tax_table(ZHAN_relab)[,6])] <- "Unidentified"
+tax_table(ZHAN_relab)[,6][tax_table(ZHAN_relab)[,6]=="Multicrustacea"] <- "Malacostraca"
+ZHAN_relab_glom <- tax_glom(ZHAN_relab, taxrank = "Class")
+
+COI_relab <- transform_sample_counts(COI, function(x) x/sum(x) )
+tax_table(COI_relab)[,6][tax_table(COI_relab)[,6]=="Class"] <- "Unidentified"
+tax_table(COI_relab)[,6][tax_table(COI_relab)[,6]==""] <- "Unidentified"
+tax_table(COI_relab)[,6][is.na(tax_table(COI_relab)[,6])] <- "Unidentified"
+COI_relab_glom <- tax_glom(COI_relab, taxrank = "Class")
+
+
+myColors22 <- c('#e6194B', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', '#469990', '#dcbeff', '#9A6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#a9a9a9', 'black')
+myColors21 <- c("#FFB90F", "#008B8B", "#030303", "#8B008B", "#006400", "#00BFFF", "#EEDFCC", "#0000FF", "#BFEFFF", "#00CD00", "#CD2626", "#C1CDCD", "#666666", "#FFF68F", "#FFE1FF", "#AB82FF", "#E0EEE0", "#CD9B9B", "#8B5742", "#6495ED", "#483D8B")
+
+names(myColors21) <- sort(unique(c(unique(tax_table(ZHAN_relab)[,6]), tax_table(COI_relab)[,6])))
+
+
+pzhan <- plot_bar_width_double_all_classes(ZHAN_relab_glom, x = "depthmean") +
+  facet_wrap(.~Cycle, ncol = 4) +
+  theme(strip.text = element_text(size=7)) +
+  theme(plot.title = element_text(size=7), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+pleray <- plot_bar_width_double_all_classes(COI_relab_glom, x = "depthmean") +
+  facet_wrap(.~Cycle, ncol = 4) +
+  theme(strip.text = element_text(size=7)) +
+  theme(plot.title = element_text(size=7), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = myColors21, name = "COI Family")
+
+
+arrange <- ggarrange(pzhan, pleray, nrow = 2, align = "hv")
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/AllComunityClass_bothmarkers.pdf", height = 7, width = 9)
+arrange
+dev.off()
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/AllComunityClass_bothmarkers.jpeg", height = 7, width = 9, unit = "in", quality = 100, res = 300)
+arrange
+dev.off()
+
+
+ZHAN_pa <- phyloseq_standardize_otu_abundance(ZHAN_relab, method = "pa") 
+tax_table(ZHAN_pa) <- tax_table(ZHAN_pa)[,c("Class", "Species")]
+ZHAN_pa <- tax_glom(ZHAN_pa, taxrank = "Class")
+taxa_names(ZHAN_pa) <- tax_table(ZHAN_pa)[,1]
+
+COI_pa <- phyloseq_standardize_otu_abundance(COI_relab, method = "pa") 
+tax_table(COI_pa) <- tax_table(COI_pa)[,c("Class", "Species")]
+COI_pa <- tax_glom(COI_pa, taxrank = "Class")
+taxa_names(COI_pa) <- tax_table(COI_pa)[,1]
+
+#names(myColors21) <- sort(unique(c(unique(tax_table(ZHAN_pa)[,6]), tax_table(COI_pa)[,6])))
+
+mycolorsnewall <- c("#0000FF", "#CD3333", "#006400", "#B23AEE", "#FFD700", "#EE1289", "#FF7F24", "#104E8B", "#FF82AB", "#EE9A49", "#FFF68F", "#B4EEB4", "#BFEFFF", "#6CA6CD", "#EEAEEE", "#836FFF", "#8B1A1A", "#8B5A00", "#000080", "#551A8B", "#CCCCCC")
+  
+names(mycolorsnewall) <- unique(names(sort(c(taxa_sums(COI_pa), taxa_sums(ZHAN_pa)), decreasing = TRUE)))
+
+cyclenames <- c(
+                    `1` = "Cycle 1",
+                    `2` = "Cycle 2",
+                    `3` = "Cycle 3",
+                    `4` = "Cycle 4"
+                    )
+
+ZHAN_pa_plot <- plot_bar_width_double_all_classes(ZHAN_pa, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4, labeller=as_labeller(cyclenames)) + 
+  theme(strip.text = element_text(size=7)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))  + 
+  scale_fill_manual(values = mycolorsnewall, name = "Class", breaks = names(mycolorsnewall)[order(names(mycolorsnewall))]) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL) + ylab(NULL)+
+  guides(fill = guide_legend(ncol = 1)) +
+  ggtitle("Number of 18S ASVs")
+ZHAN_pa_plot
+
+COI_pa_plot <- plot_bar_width_double_all_classes(COI_pa, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4, labeller=as_labeller(cyclenames)) + 
+  theme(strip.text = element_text(size=7)) +
+  theme( axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = mycolorsnewall, name = "Class", breaks = names(mycolorsnewall)[order(names(mycolorsnewall))]) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL) + ylab(NULL)+
+  guides(fill = guide_legend(ncol = 1)) +
+  ggtitle("Number of COI OTUs")
+COI_pa_plot
+
+
+arrange <- ggarrange( ZHAN_pa_plot, COI_pa_plot, nrow = 2, align = "hv")
+arrange
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/AllComunityPresence_AbsenceClass_bothmarkers.pdf", height = 7, width = 9)
+arrange
+dev.off()
+
+arranged4 <- ggarrange(ZHAN_pa_plot, prichness18S,  COI_pa_plot, prichnesscoi, nrow = 2, ncol = 2, align = "hv", widths = c(3, 1), labels = "auto")
+arrangedbars <- ggarrange( ZHAN_pa_plot, COI_pa_plot, nrow = 2, ncol = 1, align = "hv", common.legend = TRUE, legend = "right", labels = c("b", "d"))
+arrangedpoints <- ggarrange(prichness18S + ggtitle("18S richness") + ylab(NULL), prichnesscoi + ggtitle("COI richness") + ylab(NULL), nrow = 2, ncol = 1, align = "hv", common.legend = TRUE, legend = "right", labels = c("a", "c"))
+arrangedboth <- ggarrange(arrangedpoints, arrangedbars , nrow = 1, ncol = 2, widths = c(1,3))
+arrangedboth
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/AllComunityDiversityClass_bothmarkers.pdf", height = 7, width = 9)
+arrangedboth
+dev.off()
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/AllComunityDiversityClass_bothmarkers.jpeg", height = 7, width = 9, unit = "in", quality = 100, res = 300)
+arrangedboth
+dev.off()
+
+```
+
+
+
+
+#copepods
+How do copepod communities change? are there vertical shifts? are there changes in the composition? 
+Within the copepods, are there traits that are important? <- this seems possible since there is better trait data available for copepods than for other groups for the most part 
+
+```{r copepods both markers}
+
+plot_cope_richness_steph <- function (physeq, x = "Sample", y = "Richness", 
+  title = NULL, facet_grid = NULL, w = "binwidth") {
+  mdf = psmelt(physeq)
+  disp1 <- max(mdf$richnesscopes)*1.05
+  mdf$richnesscopes[mdf$Diel == "night"] <- mdf$richnesscopes[mdf$Diel == "night"]*-1
+  mdf$groupings <- paste(mdf$Diel, mdf$Cycle)
+  p <- ggplot(mdf) + 
+    annotate("rect", xmin = -Inf,
+                  xmax = Inf,
+                  ymin =  -Inf,
+                  ymax = 0, fill = "grey60", alpha = 0.5) + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4), limits = c(-disp1, disp1), labels=abs) +
+  geom_point(aes(x = depthmean, y = richnesscopes, group = groupings, color = Cycle)) + 
+  geom_line(aes(x = depthmean, y = richnesscopes, group = groupings, color = Cycle)) + 
+    theme_bw() + 
+    coord_flip() + 
+    scale_x_reverse() +
+    labs(x = "Depth (m)", y = "OTU Richness") +
+  geom_hline(yintercept = 0, size = 0.2) 
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(facet_grid)
+  }
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+
+plot_bar_width_double_copepods <- function (physeq, x = "Sample", y = "Abundance", 
+  title = NULL, facet_grid = NULL, w = "binwidth") {
+  mdf = psmelt(physeq)
+  disp1 <- max(mdf$Abundance)*1.05
+  mdf$Abundance[mdf$Diel == "night"] <- mdf$Abundance[mdf$Diel == "night"]*-1
+  p <- ggplot(mdf, aes(width = binwidth*.9)) + 
+    annotate("rect", xmin = -Inf,
+                  xmax = Inf,
+                  ymin =  -Inf,
+                  ymax = 0, fill = "grey60", alpha = 0.5) + 
+        geom_bar(aes(x = depthmean, y = Abundance, fill = Family), stat = "identity") + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4), limits = c(-disp1, disp1), labels=abs) +
+    theme_bw() + 
+    scale_fill_manual(values = c('#e6194B', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', '#469990', '#dcbeff', '#9A6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#a9a9a9', '#ffffff', '#000000')) +
+    coord_flip() + 
+    scale_x_reverse() +
+    labs(x = "Depth (m)", y = "Relative Abundance") +
+  geom_hline(yintercept = 0, size = 0.2) 
+  if (!is.null(facet_grid)) {
+    p <- p + facet_grid(facet_grid)
+  }
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+
+
+copepods18S <- subset_taxa(transform_sample_counts(ZHAN, function(x) x / sum(x) ), Subclass == "Copepoda")
+copepodsCOI <- subset_taxa(transform_sample_counts(COI, function(x) x / sum(x) ), Subclass == "Copepoda")
+
+sample_data(copepodsCOI)$richnesscopes <- estimate_richness(subset_taxa(COI, Subclass == "Copepoda"), split = TRUE, measures = "Observed")$Observed
+sample_data(copepods18S)$richnesscopes <- estimate_richness(subset_taxa(ZHAN, Subclass == "Copepoda"), split = TRUE, measures = "Observed")$Observed
+
+
+cope_richnesscoi <- plot_cope_richness_steph(copepodsCOI, x = "depthmean") + 
+  viridis::scale_color_viridis(discrete = TRUE) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  guides(fill = guide_legend(ncol = 1))
+
+
+cope_richness18S <- plot_cope_richness_steph(copepods18S, x = "depthmean") + 
+  viridis::scale_color_viridis(discrete = TRUE)+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  guides(fill = guide_legend(ncol = 1))
+
+tax_table(copepodsCOI)[,10][tax_table(copepodsCOI)[,10]==""] <- "Unidentified"
+tax_table(copepods18S)[,10][tax_table(copepods18S)[,10]==""] <- "Unidentified"
+
+tax_table(copepodsCOI) <- tax_table(copepodsCOI)[,c("Family", "Species")]
+tax_table(copepods18S) <- tax_table(copepods18S)[,c("Family", "Species")]
+
+copepodsCOI <- tax_glom(copepodsCOI, taxrank = "Family")
+copepods18S <- tax_glom(copepods18S, taxrank = "Family")
+
+taxa_names(copepodsCOI) <- tax_table(copepodsCOI)[,1]
+taxa_names(copepods18S) <- tax_table(copepods18S)[,1]
+
+sort(taxa_sums(copepodsCOI), decreasing = TRUE)
+sort(taxa_sums(copepods18S), decreasing = TRUE)
+
+myColors26 <- c("#F0F8FF", "#CDC0B0", "#76EEC6", "#458B74", "#0000FF", "#838B8B", "#00008B", "#68228B", "#EE3B3B", "#8B2323", "#FFD39B", "#98F5FF", "#7FFF00", "#FF7F24", "#8B4513", "#6495ED", "#FFF8DC", "#FFB90F", "#556B2F", "#CAFF70", "#BF3EFF", "#8FBC8F", "#FF1493", "#00BFFF", "#E0FFFF")
+
+mycolorsnew <- c("#0000FF", "#CD3333", "#006400", "#B23AEE", "#FFD700", "#EE1289", "#FF7F24", "#104E8B", "#FF82AB", "#EE9A49", "#FFF68F", "#B4EEB4", "#BFEFFF", "#6CA6CD", "#EEAEEE", "#836FFF", "#8B1A1A", "#8B5A00", "#000080", "#551A8B", "#CCCCCC", "#636363", "#030303", "#8B0A50", "#8B7355")
+  
+  
+names(mycolorsnew) <- unique(names(sort(c(taxa_sums(copepodsCOI), taxa_sums(copepods18S)), decreasing = TRUE)))
+#mycolorsnew <- mycolorsnew[order(names(mycolorsnew))]
+
+#names(myColors26) <- sort(unique(c(unique(tax_table(copepods18S)[,10]), tax_table(copepodsCOI)[,10])))
+
+
+
+COIcopepods_plot <- plot_bar_width_double_copepods(copepodsCOI, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4, labeller=as_labeller(cyclenames)) + 
+  theme(strip.text = element_text(size=7)) +
+  theme( axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = mycolorsnew, name = "Copepod Family", breaks = names(mycolorsnew)[order(names(mycolorsnew))]) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL) + ggtitle("Relative abundance of\nCOI reads")+
+  guides(fill = guide_legend(ncol = 1)) + ylab(NULL)
+COIcopepods_plot
+
+
+ZHANcopepods_plot <- plot_bar_width_double_copepods(copepods18S, x = "depthmean") + 
+  facet_wrap(.~Cycle, ncol = 4, labeller=as_labeller(cyclenames)) + 
+  theme(strip.text = element_text(size=7)) +
+  theme( axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values = mycolorsnew, name = "Copepod Family", breaks = names(mycolorsnew)[order(names(mycolorsnew))]) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 4),  labels=abs, limits = NULL) + ggtitle("Relative abundance of\n18S reads")+
+  guides(fill = guide_legend(ncol = 1)) + ylab(NULL)
+ZHANcopepods_plot
+
+
+
+
+arrangedcopepods <- ggarrange(ZHANcopepods_plot, COIcopepods_plot, nrow = 2, ncol = 1, align = "hv", common.legend = TRUE, legend = "right", labels = c("a", "b"))
+
+arrangedcopepods
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/Copepods_by_family_relativeabundance.pdf", height = 7.5, width = 9)
+arrangedcopepods
+dev.off()
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/Copepods_by_family_relativeabundance.jpeg", height = 7.5, width = 9, unit = "in", quality = 100, res = 300)
+arrangedcopepods
+dev.off()
+
+arranged4 <- ggarrange(ZHANcopepods_plot, cope_richness18S, COIcopepods_plot, cope_richnesscoi, nrow = 2, ncol = 2, align = "hv", widths = c(3, 1), labels = "auto")
+arrangedbars <- ggarrange(ZHANcopepods_plot+ theme(plot.title = element_text(hjust = 0.5)), 
+                          COIcopepods_plot+ theme(plot.title = element_text(hjust = 0.5)),
+                          nrow = 2, ncol = 1, align = "hv", common.legend = TRUE, legend = "right", labels = c("b", "d"))
+arrangedpoints <- ggarrange(cope_richness18S + ylab(NULL) + ggtitle("18S copepod\nrichness")+ theme(plot.title = element_text(hjust = 0.5)), 
+                            cope_richnesscoi +ylab(NULL)+ ggtitle("COI copepod\nrichness")+ theme(plot.title = element_text(hjust = 0.5)), 
+                            nrow = 2, ncol = 1, align = "hv", common.legend = TRUE, legend = "right", labels = c("a", "c"))
+arrangedboth <- ggarrange(arrangedpoints, arrangedbars , nrow = 1, ncol = 2, widths = c(1,3))
+arrangedboth
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/copepodrelabandruchness_bothmarkers.pdf", height = 7.5, width = 9)
+arrangedboth
+dev.off()
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/copepodrelabandruchness_bothmarkers.jpeg", height = 7.5, width = 9, unit = "in", quality = 100, res = 300)
+arrangedboth
+dev.off()
+
+```
+
+
+
+
+

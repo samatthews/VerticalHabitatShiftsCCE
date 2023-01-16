@@ -1,0 +1,303 @@
+---
+title: "enviromental data"
+output: html_document
+---
+
+
+Cycle averages:
+```{r}
+cyc_avgs <- read.csv("~/Documents/Chapter1/metadata/P1604_CTD_averages_data_table.csv", skip = 2)
+colnames(cyc_avgs) <- c("Cruise", "Cycle", "Pressure", "Temp", "Salinity", "Sigma", "Oxygen", "OxygenSat", "Fluor", "LightExt", "pH", "OmegaAragonite", "OmegaCalcite")
+cyc_avgs <- cyc_avgs[cyc_avgs$Pressure < 401,]
+
+cyc_avgs <- cyc_avgs[!is.na(cyc_avgs$Pressure),]
+
+cyc_avgs$Net <- 8
+cyc_avgs$Net[cyc_avgs$Pressure > 50 & cyc_avgs$Cycle %in% c(1, 2, 3)] <- 7
+cyc_avgs$Net[cyc_avgs$Pressure > 100 & cyc_avgs$Cycle %in% c(1, 2, 3)] <- 6
+cyc_avgs$Net[cyc_avgs$Pressure > 150 & cyc_avgs$Cycle %in% c(1, 2, 3)] <- 5
+cyc_avgs$Net[cyc_avgs$Pressure > 200 & cyc_avgs$Cycle %in% c(1, 2, 3)] <- 4
+cyc_avgs$Net[cyc_avgs$Pressure > 250 & cyc_avgs$Cycle %in% c(1, 2, 3)] <- 3
+cyc_avgs$Net[cyc_avgs$Pressure > 300 & cyc_avgs$Cycle %in% c(1, 2, 3)] <- 2
+cyc_avgs$Net[cyc_avgs$Pressure > 350 & cyc_avgs$Cycle %in% c(1, 2, 3)] <- 1
+
+cyc_avgs$Net[cyc_avgs$Pressure > 25 & cyc_avgs$Cycle == 4] <- 7
+cyc_avgs$Net[cyc_avgs$Pressure > 50 & cyc_avgs$Cycle == 4] <- 6
+cyc_avgs$Net[cyc_avgs$Pressure > 75 & cyc_avgs$Cycle == 4] <- 5
+cyc_avgs$Net[cyc_avgs$Pressure > 100 & cyc_avgs$Cycle == 4] <- 4
+cyc_avgs$Net[cyc_avgs$Pressure > 125 & cyc_avgs$Cycle == 4] <- 3
+cyc_avgs$Net[cyc_avgs$Pressure > 150 & cyc_avgs$Cycle == 4] <- 2
+cyc_avgs$Net[cyc_avgs$Pressure > 175 & cyc_avgs$Cycle == 4] <- 1
+
+cyc_avgs$Net[cyc_avgs$Pressure > 200 & cyc_avgs$Cycle == 4] <- "Null"
+cyc_avgs <- cyc_avgs[cyc_avgs$Net != "Null",]
+
+cyc_avgs$unique <- paste(cyc_avgs$Cycle, cyc_avgs$Net)
+
+#calculate averages to match MOCNESS bins
+cyc_avgs_mean <- cyc_avgs %>% 
+  dplyr::group_by(unique) %>%
+  dplyr:: mutate(netTemp = mean(Temp, na.rm=T)) %>%
+  ungroup()
+cyc_avgs_mean <- cyc_avgs_mean %>% 
+  dplyr::group_by(unique) %>%
+  dplyr:: mutate(netSal = mean(Salinity, na.rm=T)) %>%
+  ungroup()
+cyc_avgs_mean <- cyc_avgs_mean %>% 
+  dplyr::group_by(unique) %>%
+  dplyr:: mutate(netSigma = mean(Sigma, na.rm=T)) %>%
+  ungroup()
+cyc_avgs_mean <- cyc_avgs_mean %>% 
+  dplyr::group_by(unique) %>%
+  dplyr:: mutate(netOxy = mean(Oxygen, na.rm=T)) %>%
+  ungroup()
+cyc_avgs_mean <- cyc_avgs_mean %>% 
+  dplyr::group_by(unique) %>%
+  dplyr:: mutate(netOxySat = mean(OxygenSat, na.rm=T)) %>%
+  ungroup()
+cyc_avgs_mean <- cyc_avgs_mean %>% 
+  dplyr::group_by(unique) %>%
+  dplyr:: mutate(netFluor = mean(Fluor, na.rm=T)) %>%
+  ungroup()
+cyc_avgs_mean <- cyc_avgs_mean %>% 
+  dplyr::group_by(unique) %>%
+  dplyr:: mutate(netExt = mean(LightExt, na.rm=T)) %>%
+  ungroup()
+cyc_avgs_mean <- cyc_avgs_mean %>% 
+  dplyr::group_by(unique) %>%
+  dplyr:: mutate(netpH = mean(pH, na.rm=T)) %>%
+  ungroup()
+cyc_avgs_mean <- cyc_avgs_mean %>% 
+  dplyr::group_by(unique) %>%
+  dplyr:: mutate(netOmArag = mean(OmegaAragonite, na.rm=T)) %>%
+  ungroup()
+cyc_avgs_mean <- cyc_avgs_mean %>% 
+  dplyr::group_by(unique) %>%
+  dplyr:: mutate(netOmCalc = mean(OmegaCalcite, na.rm=T)) %>%
+  ungroup()
+
+cyc_avgs_mean_slim <- cyc_avgs_mean[match(unique(cyc_avgs_mean$unique), cyc_avgs_mean$unique),c(1:2,14:25)]
+
+#duplicate for adding to phyloseq
+cyc_avgs_day <- cyc_avgs_mean_slim
+cyc_avgs_night <- cyc_avgs_mean_slim
+cyc_avgs_day$Time <- "day"
+cyc_avgs_night$Time <- "night"
+cyc_avgs_ctd <- rbind(cyc_avgs_day, cyc_avgs_night)
+#ok now this can be merged with unique phyloseq samples based on cycle, net, and time
+```
+
+
+```{r}
+ggplot(cyc_avgs_ctd) + 
+  geom_point(aes(x = netExt, y = Net, color = Cycle))
+
+
+ggplot(cyc_avgs) + 
+  geom_point(aes(x = LightExt, y = Pressure, color = Cycle)) + 
+  scale_y_reverse() + 
+  theme_bw() 
+
+ggplot(cyc_avgs) + 
+  geom_point(aes(x = Fluor, y = Pressure, color = Cycle)) +
+    scale_y_reverse() + 
+  theme_bw() 
+
+
+```
+
+
+```{r}
+#library(gsw)
+library(oce)
+
+#cyc_avgs$sigmatheta <- swSigmaT(salinity = cyc_avgs$Salinity, temperature = cyc_avgs$Temp, pressure = cyc_avgs$Pressure)
+
+ggplot(cyc_avgs) +
+  geom_line(aes(x=sigmatheta, y = Pressure, group = Cycle))
+
+cyc_avgs1 <- cyc_avgs[cyc_avgs$Cycle == 1,]
+cyc_avgs2 <- cyc_avgs[cyc_avgs$Cycle == 2,]
+cyc_avgs3 <- cyc_avgs[cyc_avgs$Cycle == 3,]
+cyc_avgs4 <- cyc_avgs[cyc_avgs$Cycle == 4,]
+cyc_avgs1$N2 <- swN2(sigmaTheta = cyc_avgs1$Sigma, pressure = cyc_avgs1$Pressure)
+cyc_avgs2$N2 <- swN2(sigmaTheta = cyc_avgs2$Sigma, pressure = cyc_avgs2$Pressure)
+cyc_avgs3$N2 <- swN2(sigmaTheta = cyc_avgs3$Sigma, pressure = cyc_avgs3$Pressure)
+cyc_avgs4$N2 <- swN2(sigmaTheta = cyc_avgs4$Sigma, pressure = cyc_avgs4$Pressure)
+
+cyc_avgs <- rbind(cyc_avgs1, cyc_avgs2, cyc_avgs3, cyc_avgs4)
+
+ggplot(cyc_avgs4) +
+  geom_line(aes(y=N2, x = Pressure, group = Cycle)) + 
+  coord_flip() + 
+  scale_x_reverse()
+
+
+ggplot(cyc_avgs) +
+  geom_line(aes(y=N2, x = Pressure, group = Cycle)) + 
+  facet_wrap(.~Cycle) + 
+  coord_flip() + 
+  scale_x_reverse()
+
+#want irradience, temp, density (sigma), chl, poc/pom, o2, stratification
+#need irradience, stratification
+want <- c("Temp", "Oxygen", "Salinity", "Fluor", "LightExt", "Sigma", "Pressure", "Cycle", "N2")
+cyc_avgs_want <- cyc_avgs[,colnames(cyc_avgs) %in% want] %>% gather(Temp, Oxygen, Fluor, LightExt, Sigma, N2, Salinity, value = "value", key = "Measure")
+#gather(ZHANsizecycles, Cycle.1, Cycle.2, Cycle.3, Cycle.4, value = "counts", key = "Cycle")
+POCN_raw$Measure <- "POC (µg/L)"
+POCN_raw$Cycle <- NA
+POCN_raw$Cycle[POCN_raw$Event.grouping == "Cycle 1"] <- 1
+POCN_raw$Cycle[POCN_raw$Event.grouping == "Cycle 2"] <- 2
+POCN_raw$Cycle[POCN_raw$Event.grouping == "Cycle 3"] <- 3
+POCN_raw$Cycle[POCN_raw$Event.grouping == "Cycle 4"] <- 4
+POCN_raw_subset <- POCN_raw[,c("Cycle", "Depth..m.", "Measure", "C..µg.L.")]
+colnames(POCN_raw_subset) <- c("Cycle", "Pressure", "Measure", "value")
+cyc_avgs_want <- rbind(cyc_avgs_want, POCN_raw_subset)
+cyc_avgs_want_sort <- cyc_avgs_want[order(cyc_avgs_want$Cycle, cyc_avgs_want$Measure, cyc_avgs_want$Pressure),]
+cyc_avgs_want_sort$Cycle.fac <- as.factor(cyc_avgs_want_sort$Cycle)
+cyc_avgs_want_sort$Measure[cyc_avgs_want_sort$Measure == "Fluor"] <- "Fluorescence~(chl~a)"
+cyc_avgs_want_sort$Measure[cyc_avgs_want_sort$Measure == "LightExt"] <- "Light~Ext.~Co.~(m^-1)"
+cyc_avgs_want_sort$Measure[cyc_avgs_want_sort$Measure == "N2"] <- "N2~(Buoyancy)"
+cyc_avgs_want_sort$Measure[cyc_avgs_want_sort$Measure == "Oxygen"] <- "Oxygen~(µmol~kg^-1)"
+cyc_avgs_want_sort$Measure[cyc_avgs_want_sort$Measure == "Sigma"] <- "Density~(kg/m^3)"
+cyc_avgs_want_sort$Measure[cyc_avgs_want_sort$Measure == "Temp"] <- '"Temperature " (degree*C)' # "Temperature~(~^o~C)"
+cyc_avgs_want_sort$Measure[cyc_avgs_want_sort$Measure == "POC (µg/L)"] <- "POC~(µg/L)"
+cyc_avgs_want_sort$Measure[cyc_avgs_want_sort$Measure == "Salinity"] <- "Salinity~(PSU)"
+
+
+enviro <- ggplot(cyc_avgs_want_sort) + 
+  geom_line(aes(y = value, x = Pressure, color = Cycle.fac, group = Cycle)) +
+  facet_wrap(.~Measure, scales = "free_x", nrow=2, labeller = label_parsed) +
+  coord_flip() +
+    scale_x_reverse() + 
+  theme_bw() + 
+  scale_color_brewer(type = "seq", palette = "Dark2", name = "Cycle") + 
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  ylab(NULL)
+
+pdf(file = "~/Documents/Chapter1/for_ms/plots/ASM/environment.pdf", height = 4.5, width = 6.5)
+enviro
+dev.off()
+
+jpeg(file = "~/Documents/Chapter1/for_ms/plots/ASM/environment.jpeg", height = 4.5, width = 6.5, units = "in", res = 300, quality = 100)
+enviro
+dev.off()
+
+
+```
+
+sed trap: 
+```{r}
+sed_raw <- read.csv("~/Documents/Chapter1/metadata/Sediment_Trap_Fecal_Pellet_Flux_P1604.csv")
+
+```
+
+
+
+```{r}
+POCN_raw <- read.csv("~/Documents/Chapter1/metadata/Particulate_Organic_Carbon_and_Nitrogen_P1604.csv")
+POCN_raw$Cycle <- 1
+POCN_raw$Cycle[POCN_raw$Event.grouping == "Cycle 2"] <- 2
+POCN_raw$Cycle[POCN_raw$Event.grouping == "Cycle 3"] <- 3
+POCN_raw$Cycle[POCN_raw$Event.grouping == "Cycle 4"] <- 4
+
+POCN_raw$Net <- 8
+POCN_raw$Net[POCN_raw$Depth..m. > 50 &  POCN_raw$Cycle %in% c(1, 2, 3)] <- 7
+POCN_raw$Net[POCN_raw$Depth..m. > 100 & POCN_raw$Cycle %in% c(1, 2, 3)] <- 6
+POCN_raw$Net[POCN_raw$Depth..m. > 150 & POCN_raw$Cycle %in% c(1, 2, 3)] <- 5
+POCN_raw$Net[POCN_raw$Depth..m. > 200 & POCN_raw$Cycle %in% c(1, 2, 3)] <- 4
+POCN_raw$Net[POCN_raw$Depth..m. > 250 & POCN_raw$Cycle %in% c(1, 2, 3)] <- 3
+POCN_raw$Net[POCN_raw$Depth..m. > 300 & POCN_raw$Cycle %in% c(1, 2, 3)] <- 2
+POCN_raw$Net[POCN_raw$Depth..m. > 350 & POCN_raw$Cycle %in% c(1, 2, 3)] <- 1
+
+POCN_raw$Net[POCN_raw$Depth..m. > 25 &  POCN_raw$Cycle == 4] <- 7
+POCN_raw$Net[POCN_raw$Depth..m. > 50 &  POCN_raw$Cycle == 4] <- 6
+POCN_raw$Net[POCN_raw$Depth..m. > 75 &  POCN_raw$Cycle == 4] <- 5
+POCN_raw$Net[POCN_raw$Depth..m. > 100 & POCN_raw$Cycle == 4] <- 4
+POCN_raw$Net[POCN_raw$Depth..m. > 125 & POCN_raw$Cycle == 4] <- 3
+POCN_raw$Net[POCN_raw$Depth..m. > 150 & POCN_raw$Cycle == 4] <- 2
+POCN_raw$Net[POCN_raw$Depth..m. > 175 & POCN_raw$Cycle == 4] <- 1
+
+POCN_raw_mean <- POCN_raw %>%
+  dplyr::group_by(Net, Cycle) %>%
+  dplyr:: mutate(netNumol = mean(N..µmol.L., na.rm=T)) %>%
+  ungroup()
+POCN_raw_mean <- POCN_raw_mean %>%
+  dplyr::group_by(Net, Cycle) %>%
+  dplyr:: mutate(netCumol = mean(C..µmol.L., na.rm=T)) %>%
+  ungroup()
+POCN_raw_mean <- POCN_raw_mean %>%
+  dplyr::group_by(Net, Cycle) %>%
+  dplyr:: mutate(netCNrat = mean(C.N.Molar.Ratio, na.rm=T)) %>%
+  ungroup()
+
+POCN_raw_mean <- POCN_raw_mean %>% distinct(Cycle, Net,  .keep_all = TRUE)
+
+
+```
+
+chlorophyll max (fl. max from ctd averages)
+cycle 1 - 73db
+cycle 2 - 92
+cycle 3 - 20
+cycle 4 - 10
+
+
+```{r calculate depth of 1% or 5% light}
+#light extinction = beamC = units of 1/m
+#average beamC in upper 50m? 
+
+#Z = (ln(0.01))/-k
+
+c1_50m <- cyc_avgs$LightExt[cyc_avgs$Cycle == 1 & cyc_avgs$Pressure < 50]
+c2_50m <- cyc_avgs$LightExt[cyc_avgs$Cycle == 2 & cyc_avgs$Pressure < 50]
+c3_50m <- cyc_avgs$LightExt[cyc_avgs$Cycle == 3 & cyc_avgs$Pressure < 50]
+c4_50m <- cyc_avgs$LightExt[cyc_avgs$Cycle == 4 & cyc_avgs$Pressure < 50]
+
+
+
+Z_1 <- (log(0.001))/-mean(c1_50m)
+Z_2 <- (log(0.001))/-mean(c2_50m)
+Z_3 <- (log(0.001))/-mean(c3_50m)
+Z_4 <- (log(0.001))/-mean(c4_50m)
+
+Z_1
+Z_2
+Z_3
+Z_4
+
+
+
+```
+
+
+```{r}
+
+oneperclight <- c(Z_1, Z_2, Z_3, Z_4)
+chlmax <- c(73, 92, 20, 10)
+avg100mchl <- c(mean(cyc_avgs$Fluor[cyc_avgs$Cycle == 1 & cyc_avgs$Pressure < 100]), 
+                mean(cyc_avgs$Fluor[cyc_avgs$Cycle == 2 & cyc_avgs$Pressure < 100]), 
+                mean(cyc_avgs$Fluor[cyc_avgs$Cycle == 3 & cyc_avgs$Pressure < 100]), 
+                mean(cyc_avgs$Fluor[cyc_avgs$Cycle == 4 & cyc_avgs$Pressure < 100]))
+beamC100m <- c(mean(cyc_avgs$LightExt[cyc_avgs$Cycle == 1 & cyc_avgs$Pressure < 100]), 
+                mean(cyc_avgs$LightExt[cyc_avgs$Cycle == 2 & cyc_avgs$Pressure < 100]), 
+                mean(cyc_avgs$LightExt[cyc_avgs$Cycle == 3 & cyc_avgs$Pressure < 100]), 
+                mean(cyc_avgs$LightExt[cyc_avgs$Cycle == 4 & cyc_avgs$Pressure < 100]))
+carbon100m <- sed_raw$Fecal.Pellet.Mass.Flux...mgC.m..day..[sed_raw$Depth..m. == 100 | sed_raw$Depth..m. == 97]
+carbon150m <- sed_raw$Fecal.Pellet.Mass.Flux...mgC.m..day..[sed_raw$Depth..m. == 150 | sed_raw$Depth..m. == 147]
+cyclen <- c(1, 2, 3, 4)
+enviro_data <- data.frame(oneperclight, chlmax, avg100mchl, beamC100m, carbon100m, carbon150m, cyclen)
+
+
+```
+
+I think for each cycle we want the depth of the chlorophyll max, the carbon export (measured via sediment trap) at 150 and 100m
+For each net we want the mean light environment, chlorophyll concentration (mean? sum? max/min?), mean carbon and nitrogen. 
+
+```{r}
+#POCN_raw_mean this is the particulate carbon and nitrogen - honestly maybe not super useful 
+
+
+```
+
+

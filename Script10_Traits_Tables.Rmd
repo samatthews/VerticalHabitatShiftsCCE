@@ -1,0 +1,234 @@
+---
+title: "Script10_Traits_Table"
+output: html_document
+date: "2022-12-07"
+---
+
+```{r load libraries}
+
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(ggdendro)
+library(gridExtra)
+library(stringr)
+library(dendextend)
+library(Biostrings)
+library(insect)
+library(ape)
+library(seqinr)
+library(decontam)
+library(lmodel2)
+library(mgcv)
+library(goeveg)
+library(metagMisc)
+library(magrittr)
+library(ggpubr)
+library(RColorBrewer)
+library(readxl)
+library(rcompanion)
+library(car)
+library(nlme)
+library(lme4)
+library(MuMIn)
+library(reshape2)
+library(Hmisc)
+```
+
+```{r load data}
+load("COIdataforASM.rdat") #this loads calculated MDO, a rarified version of the dataset, the dataset that the MDO was calculated on, and the epipelagic MDO 
+load("ZHANdataforASM.rdat")#this loads calculated MDO, a rarified version of the dataset, the dataset that the MDO was calculated on, and the epipelagic MDO 
+load("tables_bothmarkers_absentspeciesremoved_COIstopcodonsremoved_traitsadded_withDVM.Rdat") #this overwrites the objects "ZHAN" and "COI" with the updated versions that have been filtered to remove pseudogenes, and have migratory classification added, and have the taxonomy of species not occuring the N. Pacific removed, and have empty taxa removed
+
+COI <- subset_taxa(COI, Class != "Ascidiacea")
+COI <- subset_taxa(COI, Class != "Anthozoa")
+COI <- subset_taxa(COI, Order != "Nudibranchia")
+COI <- subset_taxa(COI, Order != "Sessilia")
+COI <- subset_taxa(COI, Order != "Actiniaria")
+
+ZHAN <- subset_taxa(ZHAN, Class != "Anthozoa")
+ZHAN <- subset_taxa(ZHAN, Class != "Sedentaria")
+ZHAN <- subset_taxa(ZHAN, Superorder != "Nudipleura")
+ZHAN <- subset_taxa(ZHAN, Order != "Sessilia")
+```
+
+
+```{r COI count traits}
+
+COI_Diet_Class <- data.frame(dplyr::bind_rows(
+  data.frame(tax_table(COI)) %>%
+  group_by(Diet, Class, .drop = FALSE) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop")) %>% 
+    spread(Diet, OTUs))
+COI_FeedingBehavior_Class <- data.frame(dplyr::bind_rows(
+  data.frame(tax_table(COI)) %>%
+  group_by(FeedingBehavior, Class) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop")) %>% 
+    spread(FeedingBehavior, OTUs))
+COI_Spawning_Class <- data.frame(dplyr::bind_rows(
+  data.frame(tax_table(COI)) %>%
+  group_by(Spawning, Class) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop")) %>% 
+    spread(Spawning, OTUs))
+COI_AsexualRepro_Class <- data.frame(dplyr::bind_rows(
+  data.frame(tax_table(COI)) %>%
+  group_by(AsexualRepro, Class) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop")) %>% 
+    spread(AsexualRepro, OTUs))
+COI_CalculatedDVM_Class <- data.frame(dplyr::bind_rows(
+  data.frame(tax_table(COI)) %>%
+  group_by(CalculatedDVM, Class) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop")) %>% 
+    spread(CalculatedDVM, OTUs))
+COI_Carbon_Class <- data.frame(dplyr::bind_rows(
+  data.frame(tax_table(COI)) %>%
+  group_by(Carbon, Class) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop")) %>% 
+    spread(Carbon, OTUs))
+COI_Transparency_Class <- data.frame(dplyr::bind_rows(
+  data.frame(tax_table(COI)) %>%
+  group_by(Transparency, Class) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop")) %>% 
+    spread(Transparency, OTUs))
+COI_count_Class <- data.frame(dplyr::bind_rows(
+  data.frame(tax_table(COI)) %>%
+  group_by(Class, .drop = FALSE) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop")))
+
+
+COI_Diet_Class            <- COI_Diet_Class[order(COI_Diet_Class$Class),]            
+COI_FeedingBehavior_Class <- COI_FeedingBehavior_Class[order(COI_FeedingBehavior_Class$Class),]  
+COI_Spawning_Class        <- COI_Spawning_Class[order(COI_Spawning_Class$Class),]    
+COI_AsexualRepro_Class    <- COI_AsexualRepro_Class[order(COI_AsexualRepro_Class$Class),]      
+COI_CalculatedDVM_Class   <- COI_CalculatedDVM_Class[order(COI_CalculatedDVM_Class$Class),]     
+COI_Carbon_Class          <- COI_Carbon_Class[order(COI_Carbon_Class$Class),]      
+COI_Transparency_Class    <- COI_Transparency_Class[order(COI_Transparency_Class$Class),]  
+COI_count_Class           <- COI_count_Class[order(COI_count_Class$Class),]
+
+cbind.fill <- function(...){
+    nm <- list(...) 
+    nm <- lapply(nm, as.matrix)
+    n <- max(sapply(nm, nrow)) 
+    do.call(cbind, lapply(nm, function (x) 
+        rbind(x, matrix(, n-nrow(x), ncol(x))))) 
+}
+
+COI_Class <- cbind.fill(COI_Diet_Class, COI_FeedingBehavior_Class, COI_Spawning_Class, COI_AsexualRepro_Class, COI_CalculatedDVM_Class, COI_Carbon_Class, COI_Transparency_Class, COI_count_Class)
+
+write.csv(COI_Class, file = "COI_Class.csv")
+
+```
+
+
+```{r 18S count traits}
+
+ZHAN_Diet_Class <- data.frame(dplyr::bind_rows(
+  data.frame(tax_table(ZHAN)) %>%
+  group_by(Diet, Class, .drop = FALSE) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop")) %>% 
+    spread(Diet, OTUs))
+ZHAN_FeedingBehavior_Class <- data.frame(dplyr::bind_rows(
+  data.frame(tax_table(ZHAN)) %>%
+  group_by(FeedingBehavior, Class) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop")) %>% 
+    spread(FeedingBehavior, OTUs))
+ZHAN_Spawning_Class <- data.frame(dplyr::bind_rows(
+  data.frame(tax_table(ZHAN)) %>%
+  group_by(Spawning, Class) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop")) %>% 
+    spread(Spawning, OTUs))
+ZHAN_AsexualRepro_Class <- data.frame(dplyr::bind_rows(
+  data.frame(tax_table(ZHAN)) %>%
+  group_by(AsexualRepro, Class) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop")) %>% 
+    spread(AsexualRepro, OTUs))
+ZHAN_CalculatedDVM_Class <- data.frame(dplyr::bind_rows(
+  data.frame(tax_table(ZHAN)) %>%
+  group_by(CalculatedDVM, Class) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop")) %>% 
+    spread(CalculatedDVM, OTUs))
+ZHAN_Carbon_Class <- data.frame(dplyr::bind_rows(
+  data.frame(tax_table(ZHAN)) %>%
+  group_by(Carbon, Class) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop")) %>% 
+    spread(Carbon, OTUs))
+ZHAN_Transparency_Class <- data.frame(dplyr::bind_rows(
+  data.frame(tax_table(ZHAN)) %>%
+  group_by(Transparency, Class) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop")) %>% 
+    spread(Transparency, OTUs))
+ZHAN_count_Class <- data.frame(dplyr::bind_rows(
+  data.frame(tax_table(ZHAN)) %>%
+  group_by(Class, .drop = FALSE) %>% 
+  dplyr::summarize(
+      OTUs = n(),
+      .groups = "drop")))
+
+
+ZHAN_Diet_Class            <- ZHAN_Diet_Class[order(ZHAN_Diet_Class$Class),]            
+ZHAN_FeedingBehavior_Class <- ZHAN_FeedingBehavior_Class[order(ZHAN_FeedingBehavior_Class$Class),]  
+ZHAN_Spawning_Class        <- ZHAN_Spawning_Class[order(ZHAN_Spawning_Class$Class),]    
+ZHAN_AsexualRepro_Class    <- ZHAN_AsexualRepro_Class[order(ZHAN_AsexualRepro_Class$Class),]      
+ZHAN_CalculatedDVM_Class   <- ZHAN_CalculatedDVM_Class[order(ZHAN_CalculatedDVM_Class$Class),]     
+ZHAN_Carbon_Class          <- ZHAN_Carbon_Class[order(ZHAN_Carbon_Class$Class),]      
+ZHAN_Transparency_Class    <- ZHAN_Transparency_Class[order(ZHAN_Transparency_Class$Class),]  
+ZHAN_count_Class           <- ZHAN_count_Class[order(ZHAN_count_Class$Class),]
+
+cbind.fill <- function(...){
+    nm <- list(...) 
+    nm <- lapply(nm, as.matrix)
+    n <- max(sapply(nm, nrow)) 
+    do.call(cbind, lapply(nm, function (x) 
+        rbind(x, matrix(, n-nrow(x), ncol(x))))) 
+}
+
+ZHAN_Class <- cbind.fill(ZHAN_Diet_Class, ZHAN_FeedingBehavior_Class, ZHAN_Spawning_Class, ZHAN_AsexualRepro_Class, ZHAN_CalculatedDVM_Class, ZHAN_Carbon_Class, ZHAN_Transparency_Class, ZHAN_count_Class)
+
+write.csv(ZHAN_Class, file = "ZHAN_Class.csv")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
